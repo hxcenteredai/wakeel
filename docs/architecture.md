@@ -87,13 +87,31 @@ Hard caps guarantee termination.
    └──────────────────────────────────────────────┘
           │                         │
           ▼                         ▼
-   Compass endpoint           app/offline_stubs.py
-   (OpenAI-protocol)          (no network, zero quota)
+   Live endpoint (env)        app/offline_stubs.py
+   OpenAI direct or Compass   (no network, zero quota)
 ```
+
+**Endpoints (same code, swap via `.env`):**
+
+| Profile | `OPENAI_BASE_URL` |
+|---|---|
+| Developer | `https://api.openai.com/v1` |
+| Compass (M1/M2 acceptance) | `https://compass.core42.ai/v1` |
+
+**Model tiers** (confirmed on Compass; defaults in `.env.example`):
+
+| Tier | Env var | Model |
+|---|---|---|
+| Standard | `DEFAULT_MODEL` | `gpt-4.1` |
+| Reasoning | `REASONING_MODEL` | `gpt-5.1` |
+| Embedding | `EMBEDDING_MODEL` | `text-embedding-3-large` |
+
+Optional: `INTERVIEWER_MODEL=G42-INCEPTION-GPT41-MSA` for the sovereign-AI demo
+(Inception Arabic on Compass) — per-agent override only.
 
 **Invariants:** agents never import `OpenAI` or instantiate a client; they request
 a *tier*, never a model name; `agent_name` is required for audit attribution.
-Swapping models (incl. Jais for the Interviewer) is an env-var change only.
+Swapping endpoints or models is an env-var change only.
 
 Every call logs: `timestamp, agent, model, tier, latency_seconds, input_tokens,
 output_tokens, status, error_message`.

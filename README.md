@@ -41,15 +41,40 @@ LLM-client design.
 
 ```bash
 cp .env.example .env
-# Fill OPENAI_API_KEY and OPENAI_BASE_URL with your Compass credentials.
-# Leave them blank to run fully OFFLINE (deterministic stubs, zero quota).
+# Edit .env — see profiles below. Leave OPENAI_API_KEY empty for fully OFFLINE mode.
 ```
+
+**Developer (OpenAI direct)** — day-to-day builds:
+
+```env
+OPENAI_API_KEY=<your OpenAI direct key>
+OPENAI_BASE_URL=https://api.openai.com/v1
+```
+
+**Compass verification (UAE)** — M1/M2 acceptance; client runs locally:
+
+```env
+OPENAI_BASE_URL=https://compass.core42.ai/v1
+OPENAI_API_KEY=<kept on the client side only>
+```
+
+**Model tiers** (confirmed on Compass; defaults in `.env.example`):
+
+| Tier | Env var | Model |
+|---|---|---|
+| Standard | `DEFAULT_MODEL` | `gpt-4.1` |
+| Reasoning | `REASONING_MODEL` | `gpt-5.1` |
+| Embedding | `EMBEDDING_MODEL` | `text-embedding-3-large` |
+
+Same code, different endpoint — SOW §6 wrapper only. Optional sovereign-AI demo:
+set `INTERVIEWER_MODEL=G42-INCEPTION-GPT41-MSA` on Compass (per-agent env override;
+no code change).
 
 | Variable | Purpose |
 |---|---|
-| `OPENAI_API_KEY` / `OPENAI_BASE_URL` | Compass endpoint (OpenAI-protocol). |
-| `DEFAULT_MODEL` / `REASONING_MODEL` / `EMBEDDING_MODEL` | Model per tier. |
-| `INTERVIEWER_MODEL` | Optional Arabic model (e.g. Jais) for the Interviewer. |
+| `OPENAI_API_KEY` / `OPENAI_BASE_URL` | Provider endpoint (OpenAI direct or Compass). |
+| `DEFAULT_MODEL` / `REASONING_MODEL` / `EMBEDDING_MODEL` | Model per tier (see table). |
+| `INTERVIEWER_MODEL` | Optional dedicated Interviewer model (e.g. Inception MSA on Compass). |
 | `SAMPLE_MODE` | Caps `max_tokens` for dev quota discipline (default `true`). |
 | `OFFLINE_MODE` | Force deterministic stubs (auto-on if no API key). |
 
@@ -95,9 +120,9 @@ Response: `run_id`, `copilot_id`, `config`, `validation_results`, `audit_trail`,
   language (`interviewer_response`). All downstream structured fields are English.
 - Send `intake.language = "ar"`; the UI auto-detects Arabic script and renders the
   input/messages **right-to-left**.
-- **Jais**: if exposed on Compass, set `INTERVIEWER_MODEL` to it — no code change.
-  Otherwise the Interviewer falls back to `DEFAULT_MODEL` with Arabic-aware
-  prompting (SOW §2).
+- **Dedicated Arabic model**: set `INTERVIEWER_MODEL` (e.g.
+  `G42-INCEPTION-GPT41-MSA` on Compass) — per-agent env override, no code change.
+  Otherwise the Interviewer uses `DEFAULT_MODEL` with Arabic-aware prompting.
 - An Arabic build example lives in `input_examples/build_mode/03_arabic_nda.json`.
 
 ---

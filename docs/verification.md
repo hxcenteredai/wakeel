@@ -1,8 +1,11 @@
 # Milestone 1 — Verification walkthrough (fresh clone)
 
-This is the written walkthrough for verifying **Milestone 1 (Build Mode)** from a
-clean checkout, including running the automated acceptance report against
-**Compass**. Target time: ~5 minutes plus model latency.
+Written walkthrough for verifying **Milestone 1 (Build Mode)** from a clean
+checkout, including `e2e_acceptance.py` against **Compass** from a UAE laptop.
+Target time: ~5 minutes plus model latency.
+
+**No code changes** — swap `.env` only. Model IDs below are confirmed available on
+Compass (`gpt-4.1`, `gpt-5.1`, `text-embedding-3-large`).
 
 ## 0. Prerequisites
 
@@ -24,19 +27,24 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-Edit `.env` for **Compass verification**:
+`.env.example` already ships the Compass model tiers. For **Compass verification**,
+set your key and base URL (everything else can stay as copied):
 
-```
+```env
 OPENAI_BASE_URL=https://compass.core42.ai/v1
-OPENAI_API_KEY=<your Compass key>
+OPENAI_API_KEY=<your Compass key — client-side only>
 DEFAULT_MODEL=gpt-4.1
 REASONING_MODEL=gpt-5.1
 EMBEDDING_MODEL=text-embedding-3-large
 OFFLINE_MODE=false
 ```
 
-> Optional sovereign-AI demo: set `INTERVIEWER_MODEL=G42-INCEPTION-GPT41-MSA` to
-> route the Interviewer to Compass's Inception MSA model. No code change.
+> **Developer note:** for OpenAI-direct dev work, use
+> `OPENAI_BASE_URL=https://api.openai.com/v1` and your OpenAI key instead.
+>
+> **Optional sovereign-AI demo:** `INTERVIEWER_MODEL=G42-INCEPTION-GPT41-MSA`
+> routes only the Interviewer to Compass's Inception MSA model. Per-agent env
+> override — no code change.
 
 ## 3. Smoke test the LLM connection (Acceptance criterion #1)
 
