@@ -4,8 +4,8 @@ This page collects screenshots and backend snapshots captured during the
 manual UI walkthrough of Gate 4 from `docs/verification.md`.
 
 Each section shows an **annotated screenshot** that highlights the specific
-proof the reviewer should look at (red boxes + labels) and links to the
-**full-resolution original** underneath, so nothing has been edited away.
+proof the reviewer should look at — red boxes + labels point at the exact
+UI element that satisfies the corresponding M1 acceptance criterion.
 
 - **Run date:** 2026-06-01
 - **Backend:** `uvicorn app.api:app` on `http://localhost:8000`
@@ -35,8 +35,6 @@ build/use radio defaults to **Build** and the audit panel is empty.
 
 ![Section A annotated](gate4-evidence/01-page-load-annotated.png)
 
-Full-resolution original: [`01-page-load.png`](gate4-evidence/01-page-load.png).
-
 ---
 
 ## B. Build mode — English prompt
@@ -51,10 +49,6 @@ fired** pill listing all three loops and the first
 `orchestrator — run_start` audit entry.
 
 ![Section B annotated](gate4-evidence/02-build-en-loops-fired-annotated.png)
-
-Full-resolution original: [`02-build-en-loops-fired.png`](gate4-evidence/02-build-en-loops-fired.png).
-A wider zoom that confirms the full chat reply beyond the visible
-viewport is in [`03-build-en-assistant-reply.png`](gate4-evidence/03-build-en-assistant-reply.png).
 
 This screenshot is the proof for **M1 acceptance items #3 (Build mode
 happy path)** and **#5 (Feedback loops 1–3 firing)**.
@@ -73,8 +67,6 @@ Interviewer / Debater A+B across Loops 1 and 3).
 
 ![Section C annotated](gate4-evidence/04-build-ar-rtl-and-agents-annotated.png)
 
-Full-resolution original: [`04-build-ar-rtl-and-agents.png`](gate4-evidence/04-build-ar-rtl-and-agents.png).
-
 Proves **language-agnostic build path** and **agent council audit** — the
 Arabic input is processed by the same graph as the English one, not
 short-circuited.
@@ -89,8 +81,6 @@ copilot picker is populated with the copilots just built in sections B
 and C, and the document text/upload slots are wired for M2.
 
 ![Section D annotated](gate4-evidence/05-use-mode-placeholder-annotated.png)
-
-Full-resolution original: [`05-use-mode-placeholder.png`](gate4-evidence/05-use-mode-placeholder.png).
 
 Proves **toggle works**, **built copilots are addressable**, and the M2
 slot is wired without surfacing a half-built flow.
@@ -124,8 +114,6 @@ Raw response saved at
 [`gate4-evidence/06b-backend-config-after-apply.json`](gate4-evidence/06b-backend-config-after-apply.json).
 
 ![Section E annotated](gate4-evidence/06-front-end-model-swap-applied-annotated.png)
-
-Full-resolution original: [`06-front-end-model-swap-applied.png`](gate4-evidence/06-front-end-model-swap-applied.png).
 
 Proves the PO requirement from `PO_message_history/message.md`:
 
