@@ -43,7 +43,10 @@ logs/run_*.jsonl
 logs/llm_calls.jsonl
 !logs/samples/
 
-# Local copy of PO messages at repo root (canonical copy lives under PO_requirements/)
+# PO/client source material — kept local only, never committed
+PO_requirements/
+
+# Local copy of PO messages at repo root
 /PO_message_history/
 
 # Cursor helper script (local workflow only)
