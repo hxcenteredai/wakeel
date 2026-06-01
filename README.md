@@ -132,6 +132,9 @@ python e2e_acceptance.py --base-url http://localhost:8000   # a running server
 Prints each customer journey (Sarah/EN, Ahmed/AR, vague request) and a Gate 1–6
 verdict. Exit code `0` only if all evaluated gates pass.
 
+> **Verifying Milestone 1 from a fresh clone (incl. Compass):** see
+> [`docs/verification.md`](docs/verification.md) for the step-by-step walkthrough.
+
 ### 2. Pytest suite
 
 ```bash
