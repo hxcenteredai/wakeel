@@ -1,0 +1,84 @@
+# Environment variables — NEVER commit real keys
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv
+.virtualenv
+
+# Distribution / packaging
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# pytest / coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Vector store data (large; ingested per environment)
+data/corpus/chromadb/
+data/corpus/*.pdf
+data/corpus/*.txt
+!data/corpus/README.md
+
+# Generated copilot configs (per-tenant; not committed)
+data/copilots/cp_*.json
+
+# Logs (audit trail; sample only committed)
+logs/run_*.jsonl
+!logs/sample_*.jsonl
+
+# Docker
+*.tar
+docker-compose.override.yml
+
+# OS
+Thumbs.db
+.DS_Store
