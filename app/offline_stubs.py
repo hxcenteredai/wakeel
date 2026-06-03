@@ -278,66 +278,155 @@ def _validator(ctx: dict[str, Any]) -> str:
 
 
 def _reviewer_initial(ctx: dict[str, Any]) -> str:
-    """Pass-1 review: emits THREE findings, the FIRST with a deliberately
-    hallucinated citation so Loop 4 demonstrably fires.
+    """Pass-1 review: emits findings shaped to the actual document content,
+    with the FIRST high-risk cross-border finding deliberately citing a
+    hallucinated article so Loop 4 demonstrably fires.
     """
     overrides = ctx.get("interpretation_overrides", []) or []
     has_pdpl_override = any(
         "45 of 2021" in (o.get("law", "") or "") for o in overrides
     )
+    document = (ctx.get("document_text") or "").lower()
 
-    findings = [
-        {
-            "clause": (
-                "Vendor may transfer Confidential Information to its banking "
-                "partners outside the UAE without further notice to the Discloser."
-            ),
-            "risk": "high",
-            "confidence": 0.93,
-            # HALLUCINATED — PDPL has no Article 99. Loop 4 triggers.
-            "citation": {
-                "law": "Federal Decree-Law 45 of 2021",
-                "article": "99",
-            },
-            "rationale": (
-                "Cross-border personal-data transfer without explicit consent "
-                "re-confirmation violates the org's tuned PDPL stance"
-                + (" (override applied)." if has_pdpl_override else ".")
-            ),
-        },
-        {
-            "clause": (
-                "The obligation of confidentiality shall expire upon "
-                "termination of this Agreement."
-            ),
-            "risk": "medium",
-            "confidence": 0.84,
-            "citation": {
-                "law": "Federal Law 18 of 1993",
-                "article": "87",
-            },
-            "rationale": (
-                "Confidentiality of trade information should extend beyond "
-                "termination for a reasonable period under commercial custom."
-            ),
-        },
-        {
-            "clause": (
-                "Either party may terminate this Agreement upon seven (7) "
-                "days written notice for any reason."
-            ),
-            "risk": "low",
-            "confidence": 0.71,
-            "citation": {
-                "law": "Federal Law 5 of 1985",
-                "article": "246",
-            },
-            "rationale": (
-                "Termination must be exercised in accordance with the "
-                "good-faith principle of the Civil Code."
-            ),
-        },
-    ]
+    findings: list[dict[str, Any]] = []
+
+    # Cross-border transfer — high risk if the doc lacks a consent qualifier.
+    if "outside the uae" in document or "cross-border" in document or "transfer" in document:
+        has_consent_qualifier = (
+            "prior written consent" in document
+            or "explicit consent" in document
+            or "personal data" in document and "consent" in document
+        )
+        if not has_consent_qualifier:
+            findings.append(
+                {
+                    "clause": (
+                        "Vendor may transfer Confidential Information to its banking "
+                        "partners outside the UAE without further notice to the Discloser."
+                    ),
+                    "risk": "high",
+                    "confidence": 0.93,
+                    # HALLUCINATED — PDPL has no Article 99. Loop 4 triggers.
+                    "citation": {"law": "Federal Decree-Law 45 of 2021", "article": "99"},
+                    "rationale": (
+                        "Cross-border personal-data transfer without explicit consent "
+                        "re-confirmation violates the org's tuned PDPL stance"
+                        + (" (override applied)." if has_pdpl_override else ".")
+                    ),
+                }
+            )
+
+    # Onward sublicensing — second high-risk finding specific to data-broker pattern.
+    if "sublicense" in document or "onward" in document or "analytics partners" in document:
+        findings.append(
+            {
+                "clause": (
+                    "Recipient may sublicense the Data to its own analytics partners, "
+                    "including outside the UAE, under back-to-back terms substantially "
+                    "similar to this Agreement."
+                ),
+                "risk": "high",
+                "confidence": 0.90,
+                "citation": {"law": "Federal Decree-Law 45 of 2021", "article": "7"},
+                "rationale": (
+                    "Onward transfer to undisclosed third parties without controller "
+                    "consent breaches PDPL data-subject control requirements."
+                ),
+            }
+        )
+
+    # Confidentiality expiry — medium risk only when expiry is at termination.
+    if "expire upon termination" in document:
+        findings.append(
+            {
+                "clause": (
+                    "The obligation of confidentiality shall expire upon termination "
+                    "of this Agreement."
+                ),
+                "risk": "medium",
+                "confidence": 0.84,
+                "citation": {"law": "Federal Law 18 of 1993", "article": "87"},
+                "rationale": (
+                    "Confidentiality of trade information should extend beyond "
+                    "termination for a reasonable period under commercial custom."
+                ),
+            }
+        )
+
+    # Survival-period adequacy — medium risk if survival exists but is short (<5y).
+    if "survive termination" in document and any(
+        f"({n})" in document or f" {n} " in document for n in ["one", "two", "three"]
+    ):
+        findings.append(
+            {
+                "clause": (
+                    "The obligation of confidentiality shall survive termination of "
+                    "this Agreement for a period of three (3) years, save for trade "
+                    "secrets, which shall remain confidential indefinitely."
+                ),
+                "risk": "medium",
+                "confidence": 0.78,
+                "citation": {"law": "Federal Law 18 of 1993", "article": "396"},
+                "rationale": (
+                    "Three-year survival is below the five-year tail recommended by "
+                    "the org's tuned stance; trade-secret carve-out is acceptable."
+                ),
+            }
+        )
+
+    # Short termination notice — low risk informational flag.
+    if "seven (7) days written notice" in document or "7 days written notice" in document:
+        findings.append(
+            {
+                "clause": (
+                    "Either party may terminate this Agreement upon seven (7) days "
+                    "written notice for any reason."
+                ),
+                "risk": "low",
+                "confidence": 0.71,
+                "citation": {"law": "Federal Law 5 of 1985", "article": "246"},
+                "rationale": (
+                    "Short notice for termination at convenience should be exercised "
+                    "in accordance with the good-faith principle of the Civil Code."
+                ),
+            }
+        )
+
+    # No-audit-access clause — medium risk in data-broker pattern.
+    if "not obligated to provide audit" in document or "self-certify" in document:
+        findings.append(
+            {
+                "clause": (
+                    "Recipient is not obligated to provide audit access to the "
+                    "Discloser; provided that Recipient shall annually self-certify "
+                    "compliance with this Agreement."
+                ),
+                "risk": "medium",
+                "confidence": 0.80,
+                "citation": {"law": "Federal Law 18 of 1993", "article": "70"},
+                "rationale": (
+                    "Self-certification without audit rights frustrates the good-"
+                    "faith verification expected of commercial counterparties."
+                ),
+            }
+        )
+
+    # Fallback: if the heuristics didn't match, emit a low-risk informational
+    # finding so the response is always well-formed for arbitrary inputs.
+    if not findings:
+        findings.append(
+            {
+                "clause": "General confidentiality language reviewed.",
+                "risk": "low",
+                "confidence": 0.65,
+                "citation": {"law": "Federal Law 5 of 1985", "article": "246"},
+                "rationale": (
+                    "No material risks identified against the configured tuned stance; "
+                    "standard good-faith obligations apply."
+                ),
+            }
+        )
+
     return _json({"findings": findings})
 
 

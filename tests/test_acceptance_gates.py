@@ -20,16 +20,26 @@ def test_gate1_llm_connection_health(api):
 
 
 def test_gate2_corpus_ingested_and_retrievable():
-    """Gate 2: corpus ingested (Labour Law + PDPL) and retrieval returns hits."""
-    from app.corpus.retrieval import is_ingested, semantic_search
+    """Gate 2: corpus ingested (4 statutes per PRD §5) and retrieval returns hits."""
+    from app.corpus.retrieval import get_article, is_ingested, semantic_search
 
     assert is_ingested(), "corpus collection is empty"
     hits = semantic_search("personal data cross border transfer consent", top_k=3)
     assert hits, "no retrieval hits"
     laws = {h["metadata"]["short_name"] for h in hits}
-    assert laws & {"PDPL", "Labour Law"}, laws
+    assert laws & {"PDPL", "Labour Law", "Commercial Transactions Law", "Civil Transactions Law"}, laws
     for h in hits:
         assert {"law_name", "short_name", "article_number"} <= set(h["metadata"])
+    # Exact-text lookup must work for all four statutes — the Citation Verifier
+    # (Loop 4) depends on this for hallucinated-citation rejection.
+    for short_name, article in [
+        ("Labour Law", "43"),
+        ("PDPL", "7"),
+        ("Commercial Transactions Law", "87"),
+        ("Civil Transactions Law", "246"),
+    ]:
+        hit = get_article(short_name, article)
+        assert hit is not None, f"exact-text lookup failed for {short_name} Art {article}"
 
 
 def test_gate2_retrieval_is_semantic_when_live(offline):
@@ -84,3 +94,116 @@ def test_gate5_llm_calls_logged():
         "input_tokens", "output_tokens", "status",
     }
     assert required <= set(last), set(last)
+
+
+# --- Milestone 2 gates --------------------------------------------------------
+
+def test_gate7_use_mode_returns_verified_citations_on_three_examples(api, offline):
+    """M2 Gate 7 (Amendment §3 criterion 1): POST /run mode=use returns valid
+    responses with verified citations on all 3 use-mode example inputs.
+    """
+    import json
+    from pathlib import Path
+
+    from helpers import USE_MODE_SCENARIOS, assert_valid_use_response, fresh_copilot
+
+    if not offline:
+        pytest.skip("Live citation matching depends on the configured model.")
+
+    copilot_id = fresh_copilot(api)
+    root = Path(__file__).resolve().parent.parent
+    for scenario in USE_MODE_SCENARIOS:
+        case = json.loads((root / scenario["input_file"]).read_text(encoding="utf-8"))
+        resp = api.post(
+            "/run",
+            json={"mode": "use", "copilot_id": copilot_id, "document": case["document"]},
+        )
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert_valid_use_response(body)
+        assert len(body["findings"]) >= scenario["expect_min_findings"], (
+            f"{scenario['id']}: expected >= {scenario['expect_min_findings']} findings, "
+            f"got {len(body['findings'])}"
+        )
+        for f in body["findings"]:
+            assert f["citation"].get("verified") is True, (
+                f"{scenario['id']}: unverified citation in committed finding {f}"
+            )
+        assert body["summary"]["verified_citations"] == len(body["findings"])
+        assert body["summary"]["recommendation"].startswith(
+            scenario["expect_recommendation_prefix"]
+        ), body["summary"]["recommendation"]
+
+
+def test_gate8_loops_4_and_5_demonstrably_fire(api, offline):
+    """M2 Gate 8 (Amendment §3 criterion 2): Loops 4 and 5 fire visibly in
+    logs on test inputs — not merely present in code.
+    """
+    import json
+    from pathlib import Path
+
+    from helpers import loops_in, fresh_copilot
+
+    if not offline:
+        pytest.skip("Loop-4 hallucination injection is offline-stub behaviour.")
+
+    copilot_id = fresh_copilot(api)
+    root = Path(__file__).resolve().parent.parent
+    case = json.loads(
+        (root / "input_examples/use_mode/01_aggressive_vendor_nda.json").read_text(encoding="utf-8")
+    )
+    resp = api.post(
+        "/run",
+        json={"mode": "use", "copilot_id": copilot_id, "document": case["document"]},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    fired = loops_in(body["audit_trail"])
+    assert {"Loop 4", "Loop 5"}.issubset(fired), fired
+    # Loop 4 must contain at least one rejected verdict; Loop 5 at least one rejected critique.
+    rejections = [
+        e for e in body["audit_trail"]
+        if e.get("loop") == "Loop 4" and e.get("decision") == "rejected"
+    ]
+    critiques = [
+        e for e in body["audit_trail"]
+        if e.get("loop") == "Loop 5" and e.get("decision") == "rejected"
+    ]
+    assert rejections, "Loop 4 fired without a single rejected citation"
+    assert critiques, "Loop 5 fired without a single rejected draft"
+    assert body["summary"]["citation_rejections"] >= 1
+    assert body["summary"]["draft_critiques"] >= 1
+
+
+def test_gate8_canonical_sample_log_committed():
+    """The canonical use-mode sample log (Loops 4-5 evidence) is committed to logs/samples/."""
+    import json
+    from pathlib import Path
+
+    sample = Path(__file__).resolve().parent.parent / "logs" / "samples" / "use_mode_run_loops_4_5.jsonl"
+    assert sample.exists(), f"missing committed sample: {sample}"
+    entries = [json.loads(line) for line in sample.read_text(encoding="utf-8").splitlines() if line.strip()]
+    loops = {e.get("loop") for e in entries if e.get("loop")}
+    assert {"Loop 4", "Loop 5"}.issubset(loops), loops
+
+
+def test_arabic_interviewer_handles_hospital_input(api, offline):
+    """Amendment §3 criterion 4: Arabic input works on the Interviewer,
+    verified against input_examples/build_02_hospital_nda_ar.json."""
+    import json
+    from pathlib import Path
+
+    from helpers import assert_valid_build_response, has_arabic
+
+    if not offline:
+        pytest.skip("Arabic-reply fidelity depends on the live model.")
+
+    case = json.loads(
+        (Path(__file__).resolve().parent.parent / "input_examples" / "build_02_hospital_nda_ar.json")
+        .read_text(encoding="utf-8")
+    )
+    resp = api.post("/run", json={"mode": "build", "intake": case["intake"]})
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert_valid_build_response(body)
+    assert has_arabic(body.get("interviewer_response", "")), body.get("interviewer_response")
