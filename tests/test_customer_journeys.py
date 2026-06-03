@@ -59,10 +59,27 @@ def test_vague_request_triggers_clarification_offline(api, offline):
     assert len(interviews) >= 2, interviews
 
 
-def test_use_mode_not_yet_available(api):
-    """Use mode is Milestone 2 — the API rejects it cleanly, not with a 500."""
-    resp = api.post("/run", json={"mode": "use", "copilot_id": "cp_x", "document": {"type": "text", "content": "x"}})
-    assert resp.status_code == 501, resp.text
+def test_use_mode_rejects_unknown_copilot(api):
+    """Use mode (Milestone 2) returns 404 for a copilot_id that has never been built."""
+    resp = api.post(
+        "/run",
+        json={
+            "mode": "use",
+            "copilot_id": "cp_does_not_exist",
+            "document": {"type": "text", "content": "x"},
+        },
+    )
+    assert resp.status_code == 404, resp.text
+    assert "unknown copilot_id" in resp.json()["detail"]
+
+
+def test_use_mode_requires_copilot_and_document(api):
+    """Validate input contract for use mode."""
+    resp = api.post("/run", json={"mode": "use", "document": {"type": "text", "content": "x"}})
+    assert resp.status_code == 422, resp.text
+
+    resp2 = api.post("/run", json={"mode": "use", "copilot_id": "cp_x"})
+    assert resp2.status_code == 422, resp2.text
 
 
 def test_build_requires_description(api):

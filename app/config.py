@@ -50,10 +50,11 @@ OFFLINE_MODE: bool = _as_bool(os.environ.get("OFFLINE_MODE")) or not OPENAI_API_
 
 # --- Paths ---
 _ROOT = Path(__file__).resolve().parent.parent
+DATA_DIR: Path = Path(os.environ.get("WAKEEL_DATA_DIR", _ROOT / "data"))
 LOG_DIR: Path = Path(os.environ.get("LOG_DIR", _ROOT / "logs"))
-CHROMA_DIR: Path = Path(os.environ.get("CHROMA_DIR", _ROOT / "data" / "chroma"))
+CHROMA_DIR: Path = Path(os.environ.get("CHROMA_DIR", DATA_DIR / "chroma"))
 CORPUS_CONFIG: Path = Path(
-    os.environ.get("CORPUS_CONFIG", _ROOT / "data" / "corpus" / "corpus_config.json")
+    os.environ.get("CORPUS_CONFIG", DATA_DIR / "corpus" / "corpus_config.json")
 )
 
 # --- Service wiring ---

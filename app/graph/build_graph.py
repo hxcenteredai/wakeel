@@ -13,6 +13,7 @@ from typing import Any
 
 from langgraph.graph import END, StateGraph
 
+from app import copilot_registry
 from app.agents import build_agents as agents
 from app.graph.state import BuildState
 from app.logging_utils import AuditTrail
@@ -189,18 +190,33 @@ def run_build(intake: dict[str, Any]) -> dict[str, Any]:
     graph = get_build_graph()
     final = graph.invoke(initial, config={"recursion_limit": 50})
 
+    copilot_id = final.get("copilot_id", "")
+    copilot_config = final.get("copilot_config", {})
+
+    # Persist the config so mode=use can replay it later.
+    if copilot_id and copilot_config:
+        try:
+            copilot_registry.save(copilot_id, copilot_config)
+        except Exception as exc:  # pragma: no cover - persistence is best-effort
+            audit.add(
+                agent="orchestrator",
+                action="persist_copilot",
+                decision="error",
+                reason=f"registry save failed: {exc}",
+            )
+
     audit.add(
         agent="orchestrator",
         action="run_complete",
         decision="ok",
-        reason=f"copilot {final.get('copilot_id')} validated",
+        reason=f"copilot {copilot_id} validated",
     )
 
     return {
         "run_id": run_id,
         "mode": "build",
-        "copilot_id": final.get("copilot_id", ""),
-        "config": final.get("copilot_config", {}),
+        "copilot_id": copilot_id,
+        "config": copilot_config,
         "validation_results": final.get("validation", {}),
         "audit_trail": audit.as_list(),
         "interviewer_response": final.get("interviewer_response", ""),
