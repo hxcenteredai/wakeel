@@ -13,6 +13,18 @@
       "short_name": "PDPL",
       "file": "pdpl_45_2021.txt",
       "article_pattern": "^Article\\s+\\((\\d+)\\)"
+    },
+    {
+      "law_name": "Federal Law 18 of 1993",
+      "short_name": "Commercial Transactions Law",
+      "file": "commercial_transactions_18_1993.txt",
+      "article_pattern": "^Article\\s+\\((\\d+)\\)"
+    },
+    {
+      "law_name": "Federal Law 5 of 1985",
+      "short_name": "Civil Transactions Law",
+      "file": "civil_transactions_5_1985.txt",
+      "article_pattern": "^Article\\s+\\((\\d+)\\)"
     }
   ]
 }
