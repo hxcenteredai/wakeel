@@ -12,6 +12,140 @@ OFFLINE_MODE=true python3 e2e_acceptance.py --offline
 # expected: VERDICT: ALL EVALUATED GATES PASS
 ```
 
+For the **manual UI walkthrough** with annotated screenshots (the visual
+equivalent of `docs/gate4-evidence.md` for Milestone 1), jump to the
+[Visual walkthrough — A–E](#visual-walkthrough--ae) section below. Both the
+programmatic per-criterion evidence and the visual walkthrough back the same
+M2 acceptance gates.
+
+---
+
+## Visual walkthrough — A–E
+
+Annotated screenshots taken from the running UI (`run_ui.py` driven by
+[`scripts/screenshots/capture_use_mode.py`](../scripts/screenshots/capture_use_mode.py)
+and annotated by
+[`scripts/screenshots/annotate_use_mode.py`](../scripts/screenshots/annotate_use_mode.py)).
+Each section is the proof for the M2 criterion(ia) listed underneath.
+
+- **Run date:** 2026-06-03
+- **Backend:** `uvicorn app.api:app` on `http://localhost:8100` — `OFFLINE_MODE=true`
+- **Frontend:** `streamlit run run_ui.py` on `http://localhost:8101`
+- **Copilot pre-minted:** `cp_515a842c` (Build mode, English fintech NDA template)
+- **Mode:** offline stub mode for determinism — every agent, every loop, every
+  retrieval call runs identically on every machine without LLM credentials.
+
+### A. Use mode — landing (copilot picker fed by `GET /copilots`)
+
+After switching the radio to **Use**, the panel calls `GET /copilots`,
+populates the picker with copilots from the registry, and exposes the
+example shortcut + document title + document text inputs. The audit panel
+is armed but empty.
+
+![Section A annotated](use-mode-evidence/A-use-mode-landing-annotated.png)
+
+Proves the Use-mode UI half of **Criterion 3** (NDA copilot E2E) and the
+glue between Build mode and Use mode (the same `copilot_id` minted by
+Build is what Use mode picks up via the file-backed registry).
+
+### B. Aggressive-vendor NDA loaded (pre-submit)
+
+Loading the *Aggressive vendor NDA* shortcut paste-loads
+[`input_examples/use_mode/01_aggressive_vendor_nda.json`](../input_examples/use_mode/01_aggressive_vendor_nda.json)
+into the form — title + the full NDA body including the cross-border
+transfers clause that exercises Loops 4 and 5. The primary **Review
+document** button is armed.
+
+![Section B annotated](use-mode-evidence/B-aggressive-nda-loaded-annotated.png)
+
+Demonstrates how a reviewer can replay any of the **3 committed
+use-mode examples** through the UI in one click.
+
+### C. Reviewed — verified citations, DO-NOT-SIGN, Loops 4+5 visible
+
+This is **the killer demo** per PRD §16. Submitting the aggressive NDA
+returns a `UseResponse` with:
+
+- Recommendation banner = **DO NOT SIGN as-is — material PDPL risk on
+  cross-border transfer** (rendered red).
+- Summary metrics: 3 findings (1 High, 1 Medium, 1 Low), **1 Loop-4
+  citation rejection**, **2 Loop-5 critique cycles**.
+- Finding 1 carries citation `Federal Decree-Law 45 of 2021, Article 7
+  VERIFIED (verified on attempt 2)` — the *attempt 2* annotation is the
+  Loop 4 proof; the Citation Verifier rejected the prior cite and the
+  Reviewer re-cited.
+- Counter-proposal sub-line says *refined over 2 Loop-5 critique cycles*.
+- Audit panel green pill: **Loops fired: Loop 4, Loop 5**.
+
+![Section C annotated](use-mode-evidence/C-aggressive-nda-reviewed-annotated.png)
+
+Proves **Criterion 1** (verified citations on a use-mode example),
+**Criterion 2** (Loops 4 + 5 firing), and **Criterion 3** (NDA copilot
+end-to-end).
+
+### D. Audit panel — Loop 4 rejection + Reviewer re-cite expanded
+
+Expanding the first Citation Verifier (Loop 4) audit entry surfaces the
+full rejection record:
+
+- `Decision: rejected`
+- `Reason: Article not found in corpus; offered 3 candidates.`
+- Details JSON: hallucinated cite was `Federal Decree-Law 45 of 2021,
+  Article 99` — the Verifier offered back 3 nearest neighbours (Civil
+  Transactions Art 257, Commercial Transactions Art 2, Civil Transactions
+  Art 390).
+
+The Reviewer — `re_cite` (Loop 4) entry below shows the recovery —
+`{rejected: art 99} → {proposed: art 7}`. The finding card on the left
+then carries the `verified on attempt 2` annotation that proves Loop 4
+ran to a successful re-cite, not just to a fail-state.
+
+![Section D annotated](use-mode-evidence/D-audit-loops-4-5-expanded-annotated.png)
+
+Proves the mechanism behind **Criterion 2** — Loops 4 and 5 are not
+just *labelled* in the audit, they carry the full structured rejection
+and recovery payload. This is the auditability story PRD §14 requires.
+
+### E. Balanced commercial NDA — different recommendation, same pipeline
+
+Same copilot, different document
+([`input_examples/use_mode/02_balanced_partner_nda.json`](../input_examples/use_mode/02_balanced_partner_nda.json)).
+Recommendation flips to **GREEN — *Acceptable subject to the listed
+counter-proposals*** with 1 Medium finding, **0 Loop-4 rejections**,
+**1 Loop-5 critique**. The audit panel still expanded from D shows the
+Citation Verifier ran with `Decision: verified` and zero candidates —
+the same Loop 4 mechanism, just no rejection because the original cite
+was already in the corpus.
+
+![Section E annotated](use-mode-evidence/E-balanced-nda-reviewed-annotated.png)
+
+Demonstrates **content-aware** behaviour — the deterministic offline
+stubs differentiate per NDA, the recommendation logic flips colour
+based on risk severity, and **Criterion 1** holds across input
+variations (every citation verified, all `UseResponse` fields present).
+
+---
+
+## Reproducing the visual walkthrough locally
+
+```bash
+# 1. Start the M2 backend + UI in offline mode (use any free ports)
+OFFLINE_MODE=true SAMPLE_MODE=true \
+    python -m uvicorn app.api:app --host 127.0.0.1 --port 8100 &
+WAKEEL_BACKEND_URL=http://127.0.0.1:8100 \
+    streamlit run run_ui.py --server.port 8101 --server.headless true &
+
+# 2. Mint a copilot via Build mode so the Use mode picker is populated
+curl -s -X POST http://127.0.0.1:8100/run \
+     -H 'Content-Type: application/json' \
+     -d @input_examples/build_mode/01_english_nda_fintech.json | jq .copilot_id
+
+# 3. Re-capture and re-annotate the screenshots
+python scripts/screenshots/capture_use_mode.py
+python scripts/screenshots/annotate_use_mode.py
+# → docs/use-mode-evidence/{A,B,C,D,E}-*-annotated.png
+```
+
 ---
 
 ## Criterion 1 — `POST /run mode=use` returns verified citations on 3 examples
@@ -47,6 +181,11 @@ OFFLINE_MODE=true python3 scripts/generate_use_mode_examples.py
 
 **Tests:** `tests/test_acceptance_gates.py::test_gate7_use_mode_returns_verified_citations_on_three_examples`
 
+**Visual proof:** [Section C](#c-reviewed--verified-citations-do-not-sign-loops-45-visible)
+(aggressive NDA) and [Section E](#e-balanced-commercial-nda--different-recommendation-same-pipeline)
+(balanced NDA) show the Finding cards with `VERIFIED` pill + `verified on
+attempt 2` annotation on the citations.
+
 ---
 
 ## Criterion 2 — Loops 4 & 5 demonstrably triggering in `logs/run_*.jsonl`
@@ -80,6 +219,12 @@ OFFLINE_MODE=true python3 e2e_acceptance.py --offline | grep "L4\|L5"
 - `tests/test_acceptance_gates.py::test_gate8_loops_4_and_5_demonstrably_fire`
 - `tests/test_acceptance_gates.py::test_gate8_canonical_sample_log_committed`
 
+**Visual proof:** [Section D](#d-audit-panel--loop-4-rejection--reviewer-re-cite-expanded)
+expands the Citation Verifier (Loop 4) rejection entry — full rejection
+JSON with the hallucinated article and the 3 candidate alternatives — plus
+the Reviewer `re_cite` (Loop 4) recovery entry showing
+`{rejected: art 99} → {proposed: art 7}`.
+
 ---
 
 ## Criterion 3 — NDA copilot template working end-to-end against 3 use-mode inputs
@@ -103,6 +248,11 @@ import json
 c=json.load(open('input_examples/use_mode/01_aggressive_vendor_nda.json'))
 print(json.dumps({'mode':'use','copilot_id':'cp_xxxxxxx','document':c['document']}))")" | jq '.summary'
 ```
+
+**Visual proof:** [Sections A → B → C → E](#visual-walkthrough--ae) walk
+the complete UI loop — copilot picker fed by `/copilots`, document load,
+review submission, results rendered with verified citations and
+counter-proposals.
 
 ---
 
@@ -238,8 +388,13 @@ OFFLINE_MODE=true python3 scripts/generate_use_mode_examples.py
 # 6. (Optional) Docker:
 docker build -t wakeel .
 docker run -p 8000:8000 -p 8001:8001 --env-file .env wakeel
+
+# 7. (Optional) Regenerate the annotated UI walkthrough (Sections A–E):
+#    Requires playwright + chromium installed (pip install playwright; playwright install chromium).
+python3 scripts/screenshots/capture_use_mode.py
+python3 scripts/screenshots/annotate_use_mode.py
 ```
 
-Expected at step 3: **VERDICT: ALL EVALUATED GATES PASS**, M1 Gates 1-3, 5 and M2 Gates 1-4, 8 all PASS. M1 Gates 4 (UI manual), 6 (GitHub manual) and M2 Gates 5 (Docker manual), 6 (videos), 7 (docs) are N/A (manual) — verified above and in `gate4-evidence.md`.
+Expected at step 3: **VERDICT: ALL EVALUATED GATES PASS**, M1 Gates 1-3, 5 and M2 Gates 1-4, 8 all PASS. M1 Gates 4 (UI manual), 6 (GitHub manual) and M2 Gates 5 (Docker manual), 6 (videos), 7 (docs) are N/A (manual) — verified in the [Visual walkthrough section above](#visual-walkthrough--ae) and in `gate4-evidence.md`.
 
-Expected at step 4: **18 passed, 1 skipped**.
+Expected at step 4: **26 passed, 1 skipped** (M1 + M2 acceptance gates + use-mode UI helper tests).

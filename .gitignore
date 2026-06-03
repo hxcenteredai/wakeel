@@ -40,6 +40,13 @@ data/copilots/
 .e2e_chroma/
 .pytest_logs/
 
+# Screenshot scratch dirs + raw playwright captures
+# (annotated PNGs under docs/*/ are the actual committed evidence)
+.screenshot_chroma/
+.screenshot_data/
+.screenshot_logs/
+docs/use-mode-evidence/raw/
+
 # Runtime logs (committed evidence lives under logs/samples/)
 logs/run_*.jsonl
 logs/llm_calls.jsonl
