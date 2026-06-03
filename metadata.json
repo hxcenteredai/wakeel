@@ -2,6 +2,7 @@
   "project_name": "Wakeel",
   "tagline": "Sovereign UAE regulatory agent factory with org-tuned interpretation",
   "category": "AgentOps / Regulatory / Legal",
+  "use_case_id": "21",
   "version": "1.0.0",
   "team": {
     "name": "TBD",
@@ -27,6 +28,22 @@
     {"name": "Loop 5 — Counter-Proposal Critique", "agents": ["Counter-Proposal Drafter", "Reviewer"], "mode": "use"}
   ],
   "models_used": ["gpt-4.1", "gpt-5.1", "text-embedding-3-large"],
+  "tools_used": [
+    "langgraph",
+    "fastapi",
+    "streamlit",
+    "chromadb",
+    "openai-sdk",
+    "compass-api",
+    "tenacity",
+    "pypdf"
+  ],
+  "data_sources": [
+    "UAE Federal Decree-Law 33 of 2021 (Labour Law)",
+    "UAE Federal Decree-Law 45 of 2021 (Personal Data Protection Law)",
+    "Synthetic NDA documents (input_examples/)"
+  ],
+  "output_type": "text",
   "orchestration": "LangGraph",
   "api": {
     "endpoint": "POST /run",
