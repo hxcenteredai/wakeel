@@ -3,8 +3,9 @@ from __future__ import annotations
 
 from fastapi import FastAPI, HTTPException
 
-from app import llm
+from app import copilot_registry, llm
 from app.graph.build_graph import run_build
+from app.graph.use_graph import run_use
 from app.schemas import LLMConfigUpdate, RunRequest
 
 app = FastAPI(title="Wakeel — Regulatory Agent Factory", version="1.0.0")
@@ -39,15 +40,31 @@ def set_config(update: LLMConfigUpdate) -> dict:
     )
 
 
+@app.get("/copilots")
+def list_copilots() -> dict:
+    """List copilots currently registered (built via mode=build)."""
+    return {"copilots": copilot_registry.list_copilots()}
+
+
 @app.post("/run")
 def run(req: RunRequest) -> dict:
     if req.mode == "build":
         if not req.intake or not req.intake.workflow_description.strip():
-            raise HTTPException(status_code=422, detail="build mode requires intake.workflow_description")
+            raise HTTPException(
+                status_code=422, detail="build mode requires intake.workflow_description"
+            )
         return run_build(req.intake.model_dump())
 
     if req.mode == "use":
-        # Use mode is delivered in a later milestone (Reviewer, Citation Verifier...).
-        raise HTTPException(status_code=501, detail="mode=use not yet implemented (Milestone 2)")
+        if not req.copilot_id:
+            raise HTTPException(status_code=422, detail="use mode requires copilot_id")
+        if not req.document or not req.document.content.strip():
+            raise HTTPException(
+                status_code=422, detail="use mode requires document.content"
+            )
+        try:
+            return run_use(req.copilot_id, req.document.model_dump())
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc))
 
     raise HTTPException(status_code=422, detail=f"unknown mode: {req.mode}")

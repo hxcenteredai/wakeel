@@ -5,8 +5,8 @@
   "use_case_id": "21",
   "version": "1.0.0",
   "team": {
-    "name": "TBD",
-    "members": []
+    "name": "Wakeel",
+    "members": ["Huy Nguyen", "Jillian David"]
   },
   "agents": [
     {"name": "Interviewer", "role": "Extracts structured requirements; accepts Arabic or English input", "mode": "build"},
@@ -55,7 +55,7 @@
     "port": 8001,
     "languages_supported": ["English", "Arabic"]
   },
-  "demo_video_url": "<TO_BE_FILLED_JUNE_4>",
-  "github_repo": "<TO_BE_FILLED_MAY_30>",
+  "demo_video_url": "https://drive.google.com/drive/folders/15DftyotUBKH0qZXUIqAyH__y8IYZgeNk?usp=sharing",
+  "github_repo": "https://github.com/hxcenteredai/wakeel",
   "submission_date": "2026-06-07"
 }
