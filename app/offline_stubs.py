@@ -600,9 +600,16 @@ def _route_reviewer(messages: list, ctx: dict[str, Any]) -> str:
         if msg.get("role") == "system":
             system_text = str(msg.get("content", ""))
             break
-    if "critic" in system_text.lower():
+    sys_lower = system_text.lower()
+    # The critic prompt opens with "You are the Reviewer acting as critic.".
+    if "acting as critic" in sys_lower:
         return _critic(ctx)
-    if "re-cite" in system_text.lower() or "rejected your prior citation" in system_text.lower():
+    # The recite prompt is the only one that names the verifier rejection in
+    # its opening line. Use the full phrase so the offline router doesn't
+    # mis-route the initial review when its system prompt mentions "re-cite"
+    # in passing (e.g. "Loop 4 will reject hallucinated citations and you'll
+    # be asked to re-cite.").
+    if "rejected your prior citation" in sys_lower:
         return _reviewer_recite(ctx)
     return _reviewer_initial(ctx)
 

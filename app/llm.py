@@ -186,6 +186,29 @@ def _estimate_tokens(messages: list) -> int:
     return max(1, chars // 4)
 
 
+_RESPONSE_FORMAT_MARKERS = (
+    "response_format",
+    "json_object",
+    "json mode",
+    "json_schema",
+    "unsupported parameter",
+)
+
+
+def _looks_like_response_format_rejection(exc: Exception) -> bool:
+    """Detect ``BadRequestError`` from gateways that don't accept JSON mode.
+
+    Compass GPT-5.1 honours ``response_format``; some open-weights deployments
+    behind the same OpenAI-compatible surface do not. We retry once without it
+    rather than fail the whole turn.
+    """
+    name = exc.__class__.__name__.lower()
+    if "badrequest" not in name and "unsupported" not in name:
+        return False
+    msg = str(exc).lower()
+    return any(marker in msg for marker in _RESPONSE_FORMAT_MARKERS)
+
+
 # --- Property 5: mandatory chat() ---
 def chat(agent_name: str, tier: str, messages: list, **kwargs) -> Any:
     """All chat completions in the codebase go through this function.
@@ -212,6 +235,14 @@ def chat(agent_name: str, tier: str, messages: list, **kwargs) -> Any:
     if "max_tokens" in kwargs and "max_completion_tokens" not in kwargs:
         kwargs["max_completion_tokens"] = kwargs.pop("max_tokens")
 
+    # JSON mode: opt-in by callers that parse structured output. GPT-5.1 on
+    # Compass adheres to schemas far more reliably when response_format is
+    # set; some gateways/older deployments reject it, in which case we
+    # transparently retry once without it.
+    json_mode = bool(kwargs.pop("json_mode", False))
+    if json_mode:
+        kwargs.setdefault("response_format", {"type": "json_object"})
+
     offline = _state["offline"]
     start = time.perf_counter()
     status = "ok"
@@ -234,7 +265,14 @@ def chat(agent_name: str, tier: str, messages: list, **kwargs) -> Any:
                 model=f"offline-stub:{model}",
             )
         else:
-            completion = _online_chat(model, messages, **kwargs)
+            try:
+                completion = _online_chat(model, messages, **kwargs)
+            except Exception as exc:
+                if json_mode and _looks_like_response_format_rejection(exc):
+                    kwargs.pop("response_format", None)
+                    completion = _online_chat(model, messages, **kwargs)
+                else:
+                    raise
         return completion
     except Exception as exc:  # noqa: BLE001 - logged then re-raised
         status = "error"

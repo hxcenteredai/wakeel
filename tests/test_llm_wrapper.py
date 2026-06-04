@@ -306,13 +306,20 @@ def test_reconfigure_swaps_models_at_runtime(monkeypatch):
     without restarting — the same tier now resolves to a new model."""
     from app import llm
 
+    # Snapshot anything reconfigure() mutates so subsequent tests aren't
+    # tainted. reconfigure() recomputes _state["offline"] from api_key, which
+    # made earlier runs spill offline=False into test_use_mode_robustness.
+    saved_offline = llm._state["offline"]
+    saved_models = dict(llm.MODELS)
     monkeypatch.setitem(llm.MODELS, "standard", "old-standard")
     llm.reconfigure(models={"standard": "new-standard"})
     try:
         assert llm.resolve_model("standard") == "new-standard"
     finally:
-        # Restore so other tests aren't affected.
-        llm.reconfigure(models={"standard": "old-standard"})
+        llm.MODELS.clear()
+        llm.MODELS.update(saved_models)
+        llm._state["offline"] = saved_offline
+        llm._build_client()
 
 
 def test_current_config_masks_api_key(monkeypatch):

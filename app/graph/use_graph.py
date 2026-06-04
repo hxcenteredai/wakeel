@@ -13,6 +13,7 @@ from typing import Any
 from langgraph.graph import END, StateGraph
 
 from app.agents import use_agents as agents
+from app.agents.base import as_dict
 from app.copilot_registry import load as load_copilot
 from app.graph.use_state import UseState
 from app.logging_utils import AuditTrail
@@ -27,7 +28,9 @@ DRAFT_RISK_LEVELS = {"high", "medium"}
 def reviewer_node(state: UseState) -> UseState:
     audit = state["audit"]
     result = agents.reviewer(audit, state["copilot_config"], state["document"], attempt=1)
-    findings = list(result.get("findings", []))
+    # ``agents.reviewer`` already coerces findings to a list[dict]; this second
+    # pass is a belt-and-braces guarantee against any future regression.
+    findings = [as_dict(f) for f in (result.get("findings") or []) if as_dict(f)]
     state["findings"] = findings
     state["pending_indices"] = list(range(len(findings)))
     state["cite_attempts"] = {i: 1 for i in range(len(findings))}
@@ -49,13 +52,19 @@ def verifier_node(state: UseState) -> UseState:
     rejections = state.get("citation_rejections", 0)
 
     for i in list(state.get("pending_indices", [])):
+        # Guard against the finding itself being a non-dict (live model
+        # returned ``[1,2,3]`` for findings, etc.). Skip and surface in audit.
+        findings[i] = as_dict(findings[i])
         attempt = state.get("cite_attempts", {}).get(i, 1)
         verdict = agents.citation_verifier(audit, findings[i], attempt)
-        if verdict["verified"]:
-            findings[i]["citation"] = dict(findings[i].get("citation", {}))
-            findings[i]["citation"]["verified"] = True
-            findings[i]["citation"]["exact_text"] = verdict.get("exact_text")
-            findings[i]["citation"]["verification_attempts"] = attempt
+        # Coerce citation to a dict BEFORE mutating it — live recite responses
+        # are the chief source of int/str citations in this position.
+        citation = as_dict(findings[i].get("citation"))
+        if verdict.get("verified"):
+            citation["verified"] = True
+            citation["exact_text"] = verdict.get("exact_text")
+            citation["verification_attempts"] = attempt
+            findings[i]["citation"] = citation
             continue
 
         rejections += 1
@@ -65,9 +74,9 @@ def verifier_node(state: UseState) -> UseState:
             pending_next.append(i)
         else:
             # Exhausted retries: keep finding but flag the citation as unverified.
-            findings[i]["citation"] = dict(findings[i].get("citation", {}))
-            findings[i]["citation"]["verified"] = False
-            findings[i]["citation"]["verification_attempts"] = attempt
+            citation["verified"] = False
+            citation["verification_attempts"] = attempt
+            findings[i]["citation"] = citation
 
     state["findings"] = findings
     state["pending_indices"] = pending_next
@@ -84,9 +93,10 @@ def reviewer_recite_node(state: UseState) -> UseState:
 
     for i in state.get("pending_indices", []):
         cite_attempts[i] = cite_attempts.get(i, 1) + 1
-        verifier_feedback = feedback_map.get(i, {})
+        verifier_feedback = feedback_map.get(i, {}) or {}
+        findings[i] = as_dict(findings[i])
         revised = agents.reviewer_recite(audit, findings[i], verifier_feedback, cite_attempts[i])
-        findings[i] = revised
+        findings[i] = as_dict(revised, default=findings[i])
 
     state["findings"] = findings
     state["cite_attempts"] = cite_attempts
@@ -97,16 +107,16 @@ def reviewer_recite_node(state: UseState) -> UseState:
 def drafter_node(state: UseState) -> UseState:
     """Initial draft pass over every high/medium finding."""
     audit = state["audit"]
-    findings = list(state.get("findings", []))
+    findings = [as_dict(f) for f in state.get("findings", [])]
     drafted = list(findings)
     draft_attempts: dict[int, int] = {}
     pending_draft: list[int] = []
 
     for i, finding in enumerate(findings):
-        if (finding.get("risk") or "").lower() not in DRAFT_RISK_LEVELS:
+        if _risk_level(finding) not in DRAFT_RISK_LEVELS:
             drafted[i] = finding
             continue
-        draft = agents.counter_proposal_drafter(audit, finding, attempt=1)
+        draft = as_dict(agents.counter_proposal_drafter(audit, finding, attempt=1))
         draft_attempts[i] = 1
         drafted[i] = dict(finding)
         drafted[i]["counter_proposal"] = draft.get("draft_clause", "")
@@ -119,10 +129,18 @@ def drafter_node(state: UseState) -> UseState:
     return state
 
 
+def _risk_level(finding: dict) -> str:
+    """Tolerant accessor: returns lowercased risk string or '' for any shape."""
+    risk = finding.get("risk", "") if isinstance(finding, dict) else ""
+    if isinstance(risk, str):
+        return risk.lower()
+    return str(risk).lower()
+
+
 def critic_node(state: UseState) -> UseState:
     """Loop-5 critique: route bad drafts back to the Drafter."""
     audit = state["audit"]
-    drafted = list(state.get("drafted_findings", []))
+    drafted = [as_dict(f) for f in state.get("drafted_findings", [])]
     pending_next: list[int] = []
     critic_feedback: dict[int, str] = {}
     critiques = state.get("draft_critiques", 0)
@@ -131,7 +149,7 @@ def critic_node(state: UseState) -> UseState:
         attempt = state.get("draft_attempts", {}).get(i, 1)
         finding = drafted[i]
         draft_payload = {"draft_clause": finding.get("counter_proposal", "")}
-        verdict = agents.reviewer_critic(audit, finding, draft_payload, attempt)
+        verdict = as_dict(agents.reviewer_critic(audit, finding, draft_payload, attempt))
         if verdict.get("accepted"):
             drafted[i]["counter_proposal_accepted"] = True
             continue
@@ -152,18 +170,18 @@ def critic_node(state: UseState) -> UseState:
 def drafter_revise_node(state: UseState) -> UseState:
     """Loop-5 revise: Drafter re-runs for every rejected draft."""
     audit = state["audit"]
-    drafted = list(state.get("drafted_findings", []))
+    drafted = [as_dict(f) for f in state.get("drafted_findings", [])]
     draft_attempts = dict(state.get("draft_attempts", {}))
     feedback_map = state.get("last_critic_feedback", {}) or {}
 
     for i in state.get("pending_draft_indices", []):
         draft_attempts[i] = draft_attempts.get(i, 1) + 1
-        draft = agents.counter_proposal_drafter(
+        draft = as_dict(agents.counter_proposal_drafter(
             audit,
             drafted[i],
             attempt=draft_attempts[i],
             critique=feedback_map.get(i, ""),
-        )
+        ))
         drafted[i]["counter_proposal"] = draft.get("draft_clause", "")
         drafted[i]["counter_proposal_iterations"] = draft_attempts[i]
 
@@ -175,14 +193,15 @@ def drafter_revise_node(state: UseState) -> UseState:
 
 def synthesis_node(state: UseState) -> UseState:
     audit = state["audit"]
-    findings = state.get("drafted_findings") or state.get("findings", [])
+    findings = [as_dict(f) for f in (state.get("drafted_findings") or state.get("findings", []))]
     summary = agents.synthesis(
         audit,
         findings,
         state.get("citation_rejections", 0),
         state.get("draft_critiques", 0),
     )
-    state["summary"] = summary
+    # ``agents.synthesis`` already coerces to a dict; this is a safety net.
+    state["summary"] = as_dict(summary)
     return state
 
 
