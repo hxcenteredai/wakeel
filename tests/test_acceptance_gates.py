@@ -88,10 +88,17 @@ def test_gate5_llm_calls_logged():
 
 # --- Compass / GPT-5 parameter compatibility (regression) -------------------
 
-def test_chat_uses_max_completion_tokens_for_compass_compatibility(monkeypatch):
-    """Regression: GPT-5 / o-series reasoning models on Compass reject the
-    legacy `max_tokens` parameter and require `max_completion_tokens`. The
-    wrapper must never send `max_tokens` to the OpenAI SDK call.
+def test_chat_never_sends_max_tokens_or_injects_cap(monkeypatch):
+    """Regression for two PO-confirmed Compass invariants:
+
+    1. The wrapper must NEVER send the legacy `max_tokens` to the SDK call —
+       GPT-5 / o-series reasoning models on Compass reject it.
+    2. The wrapper must NOT inject any token cap of its own by default —
+       Compass enforces group-level quotas, not per-request limits, so the
+       old SAMPLE_MODE auto-injection was unnecessary and is now removed.
+
+    The wrapper still defensively translates a caller-supplied legacy
+    `max_tokens` kwarg into `max_completion_tokens` for back-compat.
     """
     from app import llm
 
@@ -121,17 +128,30 @@ def test_chat_uses_max_completion_tokens_for_compass_compatibility(monkeypatch):
     monkeypatch.setattr(llm, "_client", _FakeClient(), raising=False)
     monkeypatch.setitem(llm._state, "offline", False)
 
-    # 1. SAMPLE_MODE injection must use max_completion_tokens, not max_tokens.
+    # 1. Default call: no token cap of any name should hit the SDK.
     llm.chat("Reviewer", "reasoning", [{"role": "user", "content": "test"}])
     assert "max_tokens" not in captured, (
         "wrapper leaked legacy 'max_tokens' to OpenAI SDK; Compass GPT-5.1 will reject it"
     )
-    assert "max_completion_tokens" in captured, (
-        "SAMPLE_MODE cap must inject 'max_completion_tokens' for GPT-5 compatibility"
+    assert "max_completion_tokens" not in captured, (
+        "wrapper auto-injected a token cap; Compass uses group-level quotas, "
+        "no per-request cap should be sent"
     )
 
-    # 2. Caller-provided legacy max_tokens must be translated.
+    # 2. SAMPLE_MODE=true must also NOT cause an injection — the historical
+    #    behaviour has been removed per PO clarification.
+    captured.clear()
+    monkeypatch.setattr(llm.config, "SAMPLE_MODE", True)
+    llm.chat("Reviewer", "reasoning", [{"role": "user", "content": "test"}])
+    assert "max_tokens" not in captured and "max_completion_tokens" not in captured, captured
+
+    # 3. Caller-provided legacy max_tokens must be translated, not passed through.
     captured.clear()
     llm.chat("Reviewer", "reasoning", [{"role": "user", "content": "x"}], max_tokens=42)
     assert "max_tokens" not in captured
     assert captured.get("max_completion_tokens") == 42
+
+    # 4. Caller-provided max_completion_tokens flows through unchanged.
+    captured.clear()
+    llm.chat("Reviewer", "reasoning", [{"role": "user", "content": "x"}], max_completion_tokens=99)
+    assert captured.get("max_completion_tokens") == 99

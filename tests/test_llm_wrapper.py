@@ -213,8 +213,20 @@ def test_chat_kwargs_passthrough_temperature_top_p(online_llm):
     assert sent["presence_penalty"] == 0.5
 
 
-def test_chat_caller_max_completion_tokens_wins_over_sample_default(online_llm):
-    """Caller-supplied max_completion_tokens overrides the SAMPLE_MODE default."""
+def test_chat_does_not_inject_token_cap_by_default(online_llm):
+    """The wrapper must not inject any token cap of its own. Compass enforces
+    group-level quotas, not per-request limits — sending a cap unnecessarily
+    is what broke M1 verification against live Compass GPT-5.1."""
+    llm, fake = online_llm
+    llm.chat("Reviewer", "standard", [{"role": "user", "content": "x"}])
+    sent = fake.store["last_chat"]
+    assert "max_tokens" not in sent, sent
+    assert "max_completion_tokens" not in sent, sent
+
+
+def test_chat_passes_through_caller_max_completion_tokens(online_llm):
+    """Caller-supplied max_completion_tokens flows through unchanged — opt-in
+    quota discipline for developers using their own OpenAI key."""
     llm, fake = online_llm
     llm.chat(
         "Reviewer",
@@ -225,15 +237,31 @@ def test_chat_caller_max_completion_tokens_wins_over_sample_default(online_llm):
     assert fake.store["last_chat"]["max_completion_tokens"] == 42
 
 
-def test_sample_mode_disabled_does_not_inject_token_cap(online_llm, monkeypatch):
-    """When SAMPLE_MODE=false, the wrapper must not inject any token cap of
-    its own (quota discipline is opt-in via SOW §6 property 4)."""
+def test_chat_translates_legacy_max_tokens_to_max_completion_tokens(online_llm):
+    """Defensive: any caller that hands us the legacy `max_tokens` kwarg (per
+    the original SOW §6 wording) is silently translated so the call still
+    works against GPT-5 / o-series models."""
     llm, fake = online_llm
-    monkeypatch.setattr(llm.config, "SAMPLE_MODE", False)
+    llm.chat(
+        "Reviewer",
+        "reasoning",
+        [{"role": "user", "content": "x"}],
+        max_tokens=77,
+    )
+    sent = fake.store["last_chat"]
+    assert "max_tokens" not in sent, "legacy max_tokens must not leak through"
+    assert sent["max_completion_tokens"] == 77
+
+
+def test_sample_mode_true_no_longer_injects_anything(online_llm, monkeypatch):
+    """Historical SAMPLE_MODE=true injection has been removed per PO
+    clarification — even when the flag is on, the wire call must be clean."""
+    llm, fake = online_llm
+    monkeypatch.setattr(llm.config, "SAMPLE_MODE", True)
     llm.chat("Reviewer", "standard", [{"role": "user", "content": "x"}])
     sent = fake.store["last_chat"]
-    assert "max_completion_tokens" not in sent, sent
-    assert "max_tokens" not in sent, sent
+    assert "max_tokens" not in sent
+    assert "max_completion_tokens" not in sent
 
 
 def test_chat_uses_interviewer_model_end_to_end(online_llm, monkeypatch):
