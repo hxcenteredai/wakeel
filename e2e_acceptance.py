@@ -8,7 +8,14 @@ same checklist the founder/Claude use in their 48h review.
 Usage:
     python e2e_acceptance.py                     # in-process, uses current .env
     python e2e_acceptance.py --offline           # force deterministic stubs
+    python e2e_acceptance.py --live              # require live LLM creds; fail fast
     python e2e_acceptance.py --base-url http://localhost:8000   # live server
+
+The ``--live`` flag exists to close the structural gap that allowed the M2
+live-Compass regressions to slip past offline testing: it refuses to run if
+``OPENAI_API_KEY`` is missing or ``OFFLINE_MODE=true``, and it stamps a
+clear LIVE-RUN banner on the output so the result can be filed as
+pre-submission evidence (see ``docs/use-mode-evidence.md``).
 
 Exit code 0 if all evaluated gates pass, 1 otherwise.
 """
@@ -39,10 +46,30 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--base-url", default=os.environ.get("WAKEEL_E2E_BASE_URL", ""))
     parser.add_argument("--offline", action="store_true", help="Force OFFLINE_MODE.")
+    parser.add_argument(
+        "--live",
+        action="store_true",
+        help=(
+            "Require a live LLM (Compass or OpenAI). Fails fast if "
+            "OPENAI_API_KEY is missing or OFFLINE_MODE is set. Use this "
+            "before declaring a milestone submission-ready."
+        ),
+    )
     args = parser.parse_args()
+
+    if args.offline and args.live:
+        print(_red("[error] --offline and --live are mutually exclusive."))
+        return 2
 
     if args.offline:
         os.environ["OFFLINE_MODE"] = "true"
+
+    if args.live:
+        # Force online mode; clear any stale OFFLINE_MODE from the shell.
+        os.environ["OFFLINE_MODE"] = "false"
+        guard_result = _enforce_live_preconditions()
+        if guard_result != 0:
+            return guard_result
 
     # For in-process runs, use an isolated vector store and re-ingest to match the
     # current embedding mode (so we never clobber dev data or mismatch dimensions).
@@ -92,6 +119,15 @@ def main() -> int:
     print("=" * 72)
     print("  WAKEEL — Milestone 1 acceptance simulation (Build mode)")
     print(f"  Target: {target}   |   Mode: {'OFFLINE (stubs)' if offline else 'LIVE (real LLM)'}")
+    if args.live:
+        # Pre-submission evidence stamp: makes the live run unambiguous when
+        # the output is pasted into docs/use-mode-evidence.md.
+        from datetime import datetime, timezone
+
+        print("-" * 72)
+        print(_yellow("  LIVE-RUN evidence stamp (do not omit when filing)"))
+        print(f"    api base : {os.environ.get('OPENAI_BASE_URL', '(default OpenAI)')}")
+        print(f"    timestamp: {datetime.now(timezone.utc).isoformat()}")
     print("=" * 72)
 
     results: list[dict] = []
@@ -291,6 +327,30 @@ def main() -> int:
     print("  VERDICT:", _green("ALL EVALUATED GATES PASS") if evaluated_pass else _red("FAILURES PRESENT"))
     print("=" * 72)
     return 0 if evaluated_pass else 1
+
+
+def _enforce_live_preconditions() -> int:
+    """Refuse to run ``--live`` without the credentials that make it meaningful.
+
+    Returns 0 if preconditions hold, non-zero otherwise (caller propagates).
+    This is the structural fix for the M2 regression that slipped past
+    offline testing — the only way to catch live-model output drift before
+    submission is to actually run against the live model.
+    """
+    api_key = (os.environ.get("OPENAI_API_KEY") or "").strip()
+    if not api_key:
+        print(_red("[error] --live requires OPENAI_API_KEY in the environment."))
+        print("        Set it via the shell or a .env file, then retry.")
+        print("        (For Compass, the key is your Core42 group key.)")
+        return 2
+    if api_key.startswith("offline") or api_key in {"none", "stub"}:
+        print(_red(f"[error] --live refused: OPENAI_API_KEY looks like a placeholder ({api_key!r})."))
+        return 2
+    base_url = (os.environ.get("OPENAI_BASE_URL") or "").strip()
+    if base_url and "compass" not in base_url and "core42" not in base_url and "openai" not in base_url:
+        # Not fatal, but warn — most deployments target Compass or OpenAI direct.
+        print(_yellow(f"[warn] OPENAI_BASE_URL={base_url!r} is unusual; continuing."))
+    return 0
 
 
 def _scan_history_for_secrets() -> bool:

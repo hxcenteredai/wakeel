@@ -12,6 +12,34 @@ OFFLINE_MODE=true python3 e2e_acceptance.py --offline
 # expected: VERDICT: ALL EVALUATED GATES PASS
 ```
 
+### Pre-submission live-LLM gate (lessons from the M2 first-submission live runs)
+
+The offline stubs return shape-perfect canonical JSON by design, so they cannot
+surface live-model output drift (e.g. envelope-wrapped payloads, scalar
+citations) on their own — that's what allowed the two M2 regressions of
+2026-06 to reach the PO. The structural fix is `e2e_acceptance.py --live`,
+which refuses to run without `OPENAI_API_KEY` (and warns on unfamiliar
+`OPENAI_BASE_URL` values). It must be run on every milestone before
+`READY-FOR-PO` is declared, and the output (with the LIVE-RUN evidence
+stamp) attached to the submission.
+
+```bash
+# whoever holds the Compass key runs this once before "submission-ready":
+OPENAI_API_KEY=<core42_group_key> \
+OPENAI_BASE_URL=https://api.core42.ai/v1 \
+python3 e2e_acceptance.py --live
+# expected: LIVE-RUN evidence stamp + VERDICT: ALL EVALUATED GATES PASS
+```
+
+| Milestone | Live run date | Run by | Result | Evidence |
+|-----------|---------------|--------|--------|----------|
+| M2        | _pending_     | _PO_   | _pending_ | paste the run footer here |
+
+Any net-new live-model output shape that breaks the suite must land back as a
+case in `tests/test_use_mode_robustness.py` (offline-reproducible) **before**
+the fix is committed, so the same shape can't regress in future milestones.
+
+
 For the **manual UI walkthrough** with annotated screenshots (the visual
 equivalent of `docs/gate4-evidence.md` for Milestone 1), jump to the
 [Visual walkthrough — A–E](#visual-walkthrough--ae) section below. Both the
