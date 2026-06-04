@@ -777,3 +777,146 @@ def test_use_mode_empty_document_returns_422(api, use_copilot):
             },
         )
         assert resp.status_code == 422, f"empty content {content!r} should 422, got {resp.status_code}: {resp.text}"
+
+
+# =============================================================================
+# Tier 3 — Symmetric Loop 4 / 5 gate-counting evidence
+#
+# The M2.2 acceptance gate now counts Loop 4 / 5 *firings* from the audit trail
+# rather than counting rejection events (see e2e_acceptance.py and
+# docs/architecture.md §4 "What counts as a Loop X firing"). The old gate
+# wrongly penalised a Reviewer that cited correctly on the first try, because
+# zero rejections were registered even though Loops 4 and 5 demonstrably ran.
+#
+# This regression test pins the symmetric fix: a "perfect-citation Reviewer"
+# whose every citation verifies on the first attempt and whose every
+# counter-proposal is accepted by the Critic on the first attempt must still
+# produce auditable Loop 4 / Loop 5 firings — and the gate's new counting must
+# pass them.
+# =============================================================================
+
+
+def test_perfect_citation_reviewer_passes_m22_with_zero_rejections(
+    api, use_copilot, monkeypatch
+):
+    """Symmetric Loop 4 fix: a Reviewer that cites perfectly on the first try
+    must still trigger the audit-trail entries Loops 4 and 5 record on every
+    invocation (verifier verdict, critic verdict) — and the new M2.2 gate
+    counting (loop4_actions >= 1 AND loop5_actions >= 1) must pass.
+
+    Setup mocks all four use-mode agents to produce a clean, single-pass run:
+      * Reviewer emits one finding citing PDPL Art 22 (real, in the corpus)
+      * Citation Verifier looks it up, finds it, logs Loop 4 with
+        decision="verified", attempt=1
+      * Drafter returns a clean replacement clause on attempt=1
+      * Critic accepts on attempt=1, logs Loop 5 with decision="accepted"
+      * Synthesis returns a structured summary
+
+    The old (rejection-counting) gate would have wrongly failed this run —
+    this test guarantees that regression cannot recur.
+    """
+
+    def responder(agent_name, messages, kwargs):
+        sys = messages[0]["content"]
+        if agent_name == "Reviewer" and _is_critic_prompt(sys):
+            return json.dumps({"accepted": True, "critique": "Clean draft, aligned with PDPL Art 22."})
+        if agent_name == "Reviewer" and _is_recite_prompt(sys):
+            pytest.fail("Reviewer must not be asked to re-cite — first citation was valid (PDPL Art 22 is in the corpus)")
+            return "{}"  # unreachable; quiets the type checker
+        if agent_name == "Reviewer":
+            return json.dumps({
+                "findings": [
+                    {
+                        "clause": "Cross-border transfers to banking partners without notice",
+                        "risk": "high",
+                        "confidence": 0.92,
+                        "citation": {"law": "PDPL", "article": "22"},
+                        "rationale": (
+                            "PDPL Art. 22 requires breach notification to the Data Office; "
+                            "the clause does not provide a notification mechanism."
+                        ),
+                    }
+                ]
+            })
+        if agent_name == "Counter-Proposal Drafter":
+            return json.dumps({
+                "draft_clause": (
+                    "Vendor shall notify the Controller of any breach of Personal Data "
+                    "within 72 hours, in alignment with PDPL Article 22."
+                ),
+                "rationale": "Restores statutory notification path.",
+            })
+        if agent_name == "Synthesis":
+            return json.dumps({
+                "summary": {
+                    "recommendation": "DO NOT SIGN — material PDPL gap on breach notification.",
+                    "total_findings": 1,
+                }
+            })
+        return "{}"
+
+    _patch_chat(monkeypatch, responder)
+
+    resp = api.post(
+        "/run",
+        json={"mode": "use", "copilot_id": use_copilot, "document": _vendor_nda_document()},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert_valid_use_response(body)
+
+    summary = body["summary"]
+    audit = body["audit_trail"]
+
+    # --- Quality signals: zero rejections, zero critique cycles ---------------
+    assert summary["citation_rejections"] == 0, (
+        "Reviewer cited PDPL Art 22 (real, in corpus) — expected 0 rejections, "
+        f"got {summary['citation_rejections']}"
+    )
+    assert summary["draft_critiques"] == 0, (
+        "Critic accepted on first attempt — expected 0 critique rejections, "
+        f"got {summary['draft_critiques']}"
+    )
+
+    # --- Loop 4 firing evidence (the symmetric-fix invariant) -----------------
+    loop4_entries = [e for e in audit if e.get("loop") == "Loop 4"]
+    assert loop4_entries, (
+        "audit_trail has no Loop 4 entries even though the verifier ran — the "
+        "verifier must tag every invocation with loop='Loop 4', accept or reject"
+    )
+    # Specifically, the verifier-verdict entry exists AND records a verified outcome.
+    verifier_verdicts = [
+        e for e in loop4_entries
+        if e.get("agent") == "Citation Verifier" and e.get("action") == "verify_citation"
+    ]
+    assert verifier_verdicts, "Loop 4 entries exist but none is the Citation Verifier verdict"
+    assert verifier_verdicts[0]["decision"] == "verified", (
+        f"Expected decision='verified' for PDPL Art 22 lookup, got "
+        f"{verifier_verdicts[0]['decision']!r}"
+    )
+
+    # --- Loop 5 firing evidence (symmetric to Loop 4) -------------------------
+    loop5_entries = [e for e in audit if e.get("loop") == "Loop 5"]
+    assert loop5_entries, (
+        "audit_trail has no Loop 5 entries even though the critic ran — the "
+        "critic must tag every invocation with loop='Loop 5', accept or reject"
+    )
+    critic_verdicts = [
+        e for e in loop5_entries
+        if e.get("agent") == "Reviewer" and e.get("action") == "critique_draft"
+    ]
+    assert critic_verdicts, "Loop 5 entries exist but none is the critic verdict"
+    assert critic_verdicts[0]["decision"] == "accepted", (
+        f"Expected decision='accepted' for first-try perfect draft, got "
+        f"{critic_verdicts[0]['decision']!r}"
+    )
+
+    # --- Replicate the M2.2 gate counting and assert it passes ----------------
+    # Mirrors e2e_acceptance.py exactly (the audit-trail-based definition).
+    loop4_actions = sum(1 for e in audit if e.get("loop") == "Loop 4")
+    loop5_actions = sum(1 for e in audit if e.get("loop") == "Loop 5")
+    assert loop4_actions >= 1 and loop5_actions >= 1, (
+        f"M2.2 gate would FAIL on a perfect-citation run "
+        f"(loop4_actions={loop4_actions}, loop5_actions={loop5_actions}) — "
+        f"the symmetric fix is broken"
+    )
