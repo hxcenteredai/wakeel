@@ -22,11 +22,12 @@ M2 acceptance gates.
 
 ## Visual walkthrough — A–E
 
-Annotated screenshots taken from the running UI (`run_ui.py` driven by
-[`scripts/screenshots/capture_use_mode.py`](../scripts/screenshots/capture_use_mode.py)
-and annotated by
-[`scripts/screenshots/annotate_use_mode.py`](../scripts/screenshots/annotate_use_mode.py)).
-Each section is the proof for the M2 criterion(ia) listed underneath.
+Annotated screenshots taken from the running UI (`run_ui.py`). The Playwright
+capture + Pillow annotator scripts used to produce these PNGs are kept locally
+(`scripts/screenshots/capture_use_mode.py` and `annotate_use_mode.py`) and are
+gitignored — the committed deliverable is the annotated PNG itself, per the
+same logic as the demo MP4s. Each section below is the proof for the M2
+criterion(ia) listed underneath.
 
 - **Run date:** 2026-06-03
 - **Backend:** `uvicorn app.api:app` on `http://localhost:8100` — `OFFLINE_MODE=true`
@@ -140,7 +141,8 @@ curl -s -X POST http://127.0.0.1:8100/run \
      -H 'Content-Type: application/json' \
      -d @input_examples/build_mode/01_english_nda_fintech.json | jq .copilot_id
 
-# 3. Re-capture and re-annotate the screenshots
+# 3. Re-capture and re-annotate the screenshots (local-only dev tooling,
+#    gitignored — committed deliverable is the annotated PNG itself).
 python scripts/screenshots/capture_use_mode.py
 python scripts/screenshots/annotate_use_mode.py
 # → docs/use-mode-evidence/{A,B,C,D,E}-*-annotated.png
@@ -390,9 +392,9 @@ docker build -t wakeel .
 docker run -p 8000:8000 -p 8001:8001 --env-file .env wakeel
 
 # 7. (Optional) Regenerate the annotated UI walkthrough (Sections A–E):
-#    Requires playwright + chromium installed (pip install playwright; playwright install chromium).
-python3 scripts/screenshots/capture_use_mode.py
-python3 scripts/screenshots/annotate_use_mode.py
+#    capture_use_mode.py + annotate_use_mode.py are local-only dev tooling
+#    (gitignored). The committed PNGs under docs/use-mode-evidence/ are the
+#    deliverable. Requires playwright + chromium if re-running locally.
 ```
 
 Expected at step 3: **VERDICT: ALL EVALUATED GATES PASS**, M1 Gates 1-3, 5 and M2 Gates 1-4, 8 all PASS. M1 Gates 4 (UI manual), 6 (GitHub manual) and M2 Gates 5 (Docker manual), 6 (videos), 7 (docs) are N/A (manual) — verified in the [Visual walkthrough section above](#visual-walkthrough--ae) and in `gate4-evidence.md`.

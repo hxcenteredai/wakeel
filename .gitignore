@@ -61,5 +61,13 @@ PO_requirements/
 # Cursor helper script (local workflow only)
 scripts/cursor-request-validation.sh
 
+# Local dev tooling for evidence-asset generation (kept locally for re-runs;
+# the committed deliverables are the resulting MP4s under demos/ and the
+# annotated PNGs under docs/use-mode-evidence/).
+scripts/demos/record_walkthroughs.py
+scripts/screenshots/capture_use_mode.py
+scripts/screenshots/annotate_use_mode.py
+scripts/generate_demo_placeholders.sh
+
 # OS
 .DS_Store
