@@ -31,7 +31,7 @@ cp .env.example .env
 set your key and base URL (everything else can stay as copied):
 
 ```env
-OPENAI_BASE_URL=https://compass.core42.ai/v1
+OPENAI_BASE_URL=https://api.core42.ai/v1
 OPENAI_API_KEY=<your Compass key — client-side only>
 DEFAULT_MODEL=gpt-4.1
 REASONING_MODEL=gpt-5.1

@@ -54,7 +54,7 @@ OPENAI_BASE_URL=https://api.openai.com/v1
 **Compass verification (UAE)** — M1/M2 acceptance; client runs locally:
 
 ```env
-OPENAI_BASE_URL=https://compass.core42.ai/v1
+OPENAI_BASE_URL=https://api.core42.ai/v1
 OPENAI_API_KEY=<kept on the client side only>
 ```
 

@@ -84,3 +84,54 @@ def test_gate5_llm_calls_logged():
         "input_tokens", "output_tokens", "status",
     }
     assert required <= set(last), set(last)
+
+
+# --- Compass / GPT-5 parameter compatibility (regression) -------------------
+
+def test_chat_uses_max_completion_tokens_for_compass_compatibility(monkeypatch):
+    """Regression: GPT-5 / o-series reasoning models on Compass reject the
+    legacy `max_tokens` parameter and require `max_completion_tokens`. The
+    wrapper must never send `max_tokens` to the OpenAI SDK call.
+    """
+    from app import llm
+
+    captured: dict = {}
+
+    class _FakeUsage:
+        prompt_tokens = 1
+        completion_tokens = 1
+        total_tokens = 2
+
+    class _FakeCompletion:
+        choices = [type("C", (), {"message": type("M", (), {"content": "ok"})()})()]
+        usage = _FakeUsage()
+        model = "gpt-5.1"
+
+    class _FakeChatCompletions:
+        def create(self, **kwargs):
+            captured.update(kwargs)
+            return _FakeCompletion()
+
+    class _FakeChat:
+        completions = _FakeChatCompletions()
+
+    class _FakeClient:
+        chat = _FakeChat()
+
+    monkeypatch.setattr(llm, "_client", _FakeClient(), raising=False)
+    monkeypatch.setitem(llm._state, "offline", False)
+
+    # 1. SAMPLE_MODE injection must use max_completion_tokens, not max_tokens.
+    llm.chat("Reviewer", "reasoning", [{"role": "user", "content": "test"}])
+    assert "max_tokens" not in captured, (
+        "wrapper leaked legacy 'max_tokens' to OpenAI SDK; Compass GPT-5.1 will reject it"
+    )
+    assert "max_completion_tokens" in captured, (
+        "SAMPLE_MODE cap must inject 'max_completion_tokens' for GPT-5 compatibility"
+    )
+
+    # 2. Caller-provided legacy max_tokens must be translated.
+    captured.clear()
+    llm.chat("Reviewer", "reasoning", [{"role": "user", "content": "x"}], max_tokens=42)
+    assert "max_tokens" not in captured
+    assert captured.get("max_completion_tokens") == 42
