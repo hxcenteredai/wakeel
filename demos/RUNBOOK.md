@@ -25,7 +25,7 @@ generated it.
 git checkout feat/m2-use-mode-delivery
 cp .env.example .env
 # In .env, set:
-#   OPENAI_BASE_URL=https://compass.core42.ai/v1   (or your dev OpenAI key)
+#   OPENAI_BASE_URL=https://api.core42.ai/v1   (or your dev OpenAI key)
 #   OPENAI_API_KEY=<key>
 #   OFFLINE_MODE=false                              (or true for stub demo)
 
