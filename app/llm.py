@@ -5,11 +5,14 @@ Implements every property required by SOW v2 section 6:
   1. Single shared OpenAI client, initialized once at module load from env vars.
   2. Model selection by tier ("standard" / "reasoning" / "embedding"), not name.
   3. Retry decorator: exponential backoff (tenacity), 4 attempts, 2s-30s.
-  4. Sample mode: caps response length to a small default when SAMPLE_MODE=true,
-     using `max_completion_tokens` (the parameter name required by GPT-5/o-series
-     reasoning models and supported by GPT-4.x chat completions on both OpenAI
-     direct and Compass). Any caller that passes the legacy `max_tokens` kwarg
-     is transparently translated to `max_completion_tokens`.
+  4. Sample mode: NO automatic token-cap injection. The wrapper does not send
+     any `max_tokens` / `max_completion_tokens` to the SDK by default — quota
+     management on Compass is enforced at the group level, not per request,
+     and OpenAI-direct dev keys can opt in by passing the kwarg explicitly.
+     The legacy `SAMPLE_MODE` env flag is retained for back-compat surfacing
+     in `current_config()` but no longer alters wire behaviour. Any caller
+     that still passes the legacy `max_tokens` kwarg is transparently
+     translated to `max_completion_tokens` for GPT-5 / o-series compatibility.
   5. Mandatory chat(agent_name, tier, messages, **kwargs) signature.
   6. Mandatory embed(texts) signature.
   7. Structured JSONL logging on every call (timestamp, agent, model, tier,
@@ -195,17 +198,19 @@ def chat(agent_name: str, tier: str, messages: list, **kwargs) -> Any:
 
     model = resolve_model(tier, agent_name=agent_name)
 
-    # Property 4: sample-mode token cap.
+    # The wrapper does NOT inject any token cap by default.
     #
-    # GPT-5 / o-series reasoning models on Compass enforce the new OpenAI
-    # parameter name `max_completion_tokens` and reject `max_tokens`.
-    # GPT-4.x chat completions accept `max_completion_tokens` too, so we
-    # use it unconditionally and translate any legacy `max_tokens` the
-    # caller might still pass.
+    # Rationale: Compass enforces group-level quotas (no per-request
+    # max_tokens enforcement), and GPT-5 / o-series reasoning models reject
+    # the legacy `max_tokens` parameter outright. The SAMPLE_MODE feature
+    # was a dev-only quota brake for OpenAI-direct keys; callers that still
+    # want it must pass `max_completion_tokens` explicitly.
+    #
+    # Defensive translation: any caller that still hands us the legacy
+    # `max_tokens` (per the original SOW §6 wording) is silently routed to
+    # `max_completion_tokens` so GPT-5.1 on Compass doesn't 400 on us.
     if "max_tokens" in kwargs and "max_completion_tokens" not in kwargs:
         kwargs["max_completion_tokens"] = kwargs.pop("max_tokens")
-    if config.SAMPLE_MODE and "max_completion_tokens" not in kwargs:
-        kwargs["max_completion_tokens"] = config.SAMPLE_MODE_MAX_TOKENS
 
     offline = _state["offline"]
     start = time.perf_counter()
