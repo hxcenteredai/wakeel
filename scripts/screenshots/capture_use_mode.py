@@ -1,8 +1,11 @@
 """Playwright capture for the M2 use-mode evidence screenshots.
 
-Drives the running Streamlit UI through the full use-mode flow on
-``http://127.0.0.1:8101`` and writes raw PNGs to
-``docs/use-mode-evidence/raw/`` for downstream annotation.
+Drives the running Streamlit UI through the full use-mode flow and writes
+raw PNGs to ``docs/use-mode-evidence/raw/`` for downstream annotation.
+
+The target URL is read from ``WAKEEL_UI_URL`` (default
+``http://127.0.0.1:8001`` — the spec port). Set ``WAKEEL_UI_URL=http://127.0.0.1:8101``
+when running an alternate-port Streamlit alongside the canonical one.
 
 Sections captured (mirrors gate4-evidence A-E):
 
@@ -18,6 +21,7 @@ Sections captured (mirrors gate4-evidence A-E):
 from __future__ import annotations
 
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -28,7 +32,7 @@ ROOT = Path(__file__).resolve().parents[2]
 OUT = ROOT / "docs" / "use-mode-evidence" / "raw"
 OUT.mkdir(parents=True, exist_ok=True)
 
-URL = "http://127.0.0.1:8101"
+URL = os.environ.get("WAKEEL_UI_URL", "http://127.0.0.1:8001")
 SCALE = 2  # device_scale_factor: CSS px → image px
 
 # Bounding boxes captured per shot, indexed by shot filename.

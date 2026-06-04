@@ -246,6 +246,11 @@ def _build_mode(chat_col, side_col) -> None:
         if st.session_state.get("last_copilot_id"):
             st.subheader("Copilot config")
             st.code(st.session_state.last_copilot_id)
+            # PRD §10: "Try it now" button switches to Use mode pre-populated.
+            if st.button("Try it now", type="primary", key="try_it_now_btn"):
+                st.session_state.mode_toggle = "Use"
+                st.session_state.use_copilot_select = st.session_state.last_copilot_id
+                st.rerun()
             st.json(st.session_state.last_config)
 
 
@@ -301,6 +306,25 @@ def _use_mode(chat_col, side_col) -> None:
             key="use_doc_title",
             placeholder="e.g. Vendor Master NDA — v1",
         )
+
+        # SOW §2 / PRD §10: "text paste or file upload for document"
+        uploaded = st.file_uploader(
+            "Upload a document (optional)",
+            type=["txt", "md"],
+            key="use_doc_upload",
+            help="Plain text or markdown. Paste below if you prefer.",
+        )
+        if uploaded is not None:
+            try:
+                content = uploaded.read().decode("utf-8", errors="replace")
+            except Exception:
+                content = ""
+            if content and content != st.session_state.use_doc_content:
+                st.session_state.use_doc_content = content
+                if not st.session_state.use_doc_title:
+                    st.session_state.use_doc_title = uploaded.name
+                st.rerun()
+
         st.text_area(
             "Document text",
             key="use_doc_content",

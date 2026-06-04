@@ -7,6 +7,44 @@ Milestone 1 delivered the six build-mode agents (Loops 1–3); Milestone 2 added
 the four use-mode agents (Reviewer, Citation Verifier, Counter-Proposal Drafter,
 Synthesis) and Loops 4–5.
 
+### Agent topology (rendered diagram)
+
+```mermaid
+flowchart TD
+    R[/POST /run/] --> M{mode}
+
+    %% Build mode
+    M -->|build| I["Interviewer<br/>(EN / AR input)<br/>tier: standard"]
+    I -- structured intake --> A["Architect<br/>tier: reasoning"]
+    A -- Loop 3<br/>clarification --> I
+    A -- triggers --> D1["Debater A<br/>(Strict Compliance)<br/>tier: reasoning"]
+    A -- triggers --> D2["Debater B<br/>(Business Practicality)<br/>tier: reasoning"]
+    D1 -- arguments --> A
+    D2 -- arguments --> A
+    A -. Loop 1<br/>request more debate .-> D1
+    A -- config outline --> B["Builder<br/>tier: standard"]
+    B -- copilot_config --> V["Validator<br/>tier: standard"]
+    V -- Loop 2<br/>reject + revise --> B
+    V -- pass --> OUT_B[/"copilot_id + config<br/>+ validation + audit"/]
+
+    %% Use mode
+    M -->|use| RV["Reviewer<br/>tier: reasoning"]
+    RV -- claim --> CV["Citation Verifier<br/>tier: standard"]
+    CV -- Loop 4<br/>reject + retry --> RV
+    CV -- verified --> CPD["Counter-Proposal<br/>Drafter<br/>tier: standard"]
+    CPD -- draft --> RV
+    RV -- Loop 5<br/>critique + retry --> CPD
+    CPD -- accepted --> S["Synthesis<br/>tier: standard"]
+    S --> OUT_U[/"findings + summary<br/>+ audit trail"/]
+
+    classDef build fill:#eef7ff,stroke:#3b82f6,stroke-width:1px,color:#1e3a8a
+    classDef use   fill:#fdf4ff,stroke:#a855f7,stroke-width:1px,color:#5b21b6
+    class I,A,D1,D2,B,V build
+    class RV,CV,CPD,S use
+```
+
+### Agent topology (ASCII fallback)
+
 ```
                           POST /run  { mode: "build" }
                                      │
@@ -89,6 +127,26 @@ rejection moment with the actual exact text of the eventually-cited article.
 Canonical evidence: `logs/samples/use_mode_run_loops_4_5.jsonl`.
 
 ## 3. LLM client architecture (SOW §6)
+
+```mermaid
+flowchart LR
+    AG["agents/*.py<br/>(10 agents, both modes)"] -->|"chat(agent_name, tier, messages)<br/>embed(texts)"| LLM
+    subgraph LLM["app/llm.py — shared client wrapper"]
+        direction TB
+        C1[Single shared<br/>OpenAI client<br/>module-load init]
+        C2[Tier → model<br/>via env vars]
+        C3[tenacity retry<br/>4 attempts, 2s–30s]
+        C4[SAMPLE_MODE<br/>max_tokens cap]
+        C5[OFFLINE_MODE<br/>deterministic stubs]
+        C6[Per-call JSONL log<br/>logs/llm_calls.jsonl]
+    end
+    LLM -->|online| LIVE["Live endpoint<br/>OpenAI / Compass<br/>(OPENAI_BASE_URL)"]
+    LLM -->|offline| STUB["app/offline_stubs.py<br/>zero quota, zero network"]
+    LIVE --> LOG[("logs/llm_calls.jsonl")]
+    STUB --> LOG
+    classDef wrap fill:#fff7ed,stroke:#ea580c,color:#7c2d12
+    class C1,C2,C3,C4,C5,C6 wrap
+```
 
 ```
        agents/*.py
