@@ -5,7 +5,11 @@ Implements every property required by SOW v2 section 6:
   1. Single shared OpenAI client, initialized once at module load from env vars.
   2. Model selection by tier ("standard" / "reasoning" / "embedding"), not name.
   3. Retry decorator: exponential backoff (tenacity), 4 attempts, 2s-30s.
-  4. Sample mode: caps max_tokens to a small default when SAMPLE_MODE=true.
+  4. Sample mode: caps response length to a small default when SAMPLE_MODE=true,
+     using `max_completion_tokens` (the parameter name required by GPT-5/o-series
+     reasoning models and supported by GPT-4.x chat completions on both OpenAI
+     direct and Compass). Any caller that passes the legacy `max_tokens` kwarg
+     is transparently translated to `max_completion_tokens`.
   5. Mandatory chat(agent_name, tier, messages, **kwargs) signature.
   6. Mandatory embed(texts) signature.
   7. Structured JSONL logging on every call (timestamp, agent, model, tier,
@@ -192,8 +196,16 @@ def chat(agent_name: str, tier: str, messages: list, **kwargs) -> Any:
     model = resolve_model(tier, agent_name=agent_name)
 
     # Property 4: sample-mode token cap.
-    if config.SAMPLE_MODE and "max_tokens" not in kwargs:
-        kwargs["max_tokens"] = config.SAMPLE_MODE_MAX_TOKENS
+    #
+    # GPT-5 / o-series reasoning models on Compass enforce the new OpenAI
+    # parameter name `max_completion_tokens` and reject `max_tokens`.
+    # GPT-4.x chat completions accept `max_completion_tokens` too, so we
+    # use it unconditionally and translate any legacy `max_tokens` the
+    # caller might still pass.
+    if "max_tokens" in kwargs and "max_completion_tokens" not in kwargs:
+        kwargs["max_completion_tokens"] = kwargs.pop("max_tokens")
+    if config.SAMPLE_MODE and "max_completion_tokens" not in kwargs:
+        kwargs["max_completion_tokens"] = config.SAMPLE_MODE_MAX_TOKENS
 
     offline = _state["offline"]
     start = time.perf_counter()

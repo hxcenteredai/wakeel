@@ -172,7 +172,7 @@ flowchart LR
 | Profile | `OPENAI_BASE_URL` |
 |---|---|
 | Developer | `https://api.openai.com/v1` |
-| Compass (M1/M2 acceptance) | `https://compass.core42.ai/v1` |
+| Compass (M1/M2 acceptance) | `https://api.core42.ai/v1` |
 
 **Model tiers** (confirmed on Compass; defaults in `.env.example`):
 
