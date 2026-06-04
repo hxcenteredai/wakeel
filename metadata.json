@@ -2,10 +2,11 @@
   "project_name": "Wakeel",
   "tagline": "Sovereign UAE regulatory agent factory with org-tuned interpretation",
   "category": "AgentOps / Regulatory / Legal",
+  "use_case_id": "21",
   "version": "1.0.0",
   "team": {
-    "name": "TBD",
-    "members": []
+    "name": "Wakeel",
+    "members": ["Huy Nguyen", "Jillian David"]
   },
   "agents": [
     {"name": "Interviewer", "role": "Extracts structured requirements; accepts Arabic or English input", "mode": "build"},
@@ -27,6 +28,22 @@
     {"name": "Loop 5 — Counter-Proposal Critique", "agents": ["Counter-Proposal Drafter", "Reviewer"], "mode": "use"}
   ],
   "models_used": ["gpt-4.1", "gpt-5.1", "text-embedding-3-large"],
+  "tools_used": [
+    "langgraph",
+    "fastapi",
+    "streamlit",
+    "chromadb",
+    "openai-sdk",
+    "compass-api",
+    "tenacity",
+    "pypdf"
+  ],
+  "data_sources": [
+    "UAE Federal Decree-Law 33 of 2021 (Labour Law)",
+    "UAE Federal Decree-Law 45 of 2021 (Personal Data Protection Law)",
+    "Synthetic NDA documents (input_examples/)"
+  ],
+  "output_type": "text",
   "orchestration": "LangGraph",
   "api": {
     "endpoint": "POST /run",
@@ -38,7 +55,7 @@
     "port": 8001,
     "languages_supported": ["English", "Arabic"]
   },
-  "demo_video_url": "<TO_BE_FILLED_JUNE_4>",
-  "github_repo": "<TO_BE_FILLED_MAY_30>",
+  "demo_video_url": "https://drive.google.com/drive/folders/15DftyotUBKH0qZXUIqAyH__y8IYZgeNk?usp=sharing",
+  "github_repo": "https://github.com/hxcenteredai/wakeel",
   "submission_date": "2026-06-07"
 }
