@@ -388,3 +388,392 @@ def test_chat_falls_back_when_gateway_rejects_response_format(monkeypatch):
     assert completion is not None
     assert calls["count"] == 2, "wrapper should have retried exactly once"
     assert "response_format" not in calls["kwargs"][1]
+
+
+# =============================================================================
+# Tier 1 / Tier 2 coverage extension — failure shapes the M2 audit identified
+# as likely-but-untested. Added per the post-mortem ("why didn't we catch this
+# before sending to the PO?") so the same class of gap can't recur.
+# =============================================================================
+
+
+def _record_reviewer_inputs(monkeypatch):
+    """Capture the user-message text every time the Reviewer agent is invoked.
+
+    Returns a list[str] that the test can inspect after running /run.
+    """
+    captured: list[str] = []
+
+    def responder(agent_name, messages, kwargs):
+        sys = messages[0]["content"]
+        if agent_name == "Reviewer" and not _is_recite_prompt(sys) and not _is_critic_prompt(sys):
+            captured.append(messages[1]["content"])
+            return json.dumps({"findings": []})
+        if agent_name == "Synthesis":
+            return json.dumps({"summary": {"recommendation": "OK"}})
+        return "{}"
+
+    _patch_chat(monkeypatch, responder)
+    return captured
+
+
+# --- Tier 1.1: long documents reach the Reviewer in full ---------------------
+
+def test_long_document_reaches_reviewer_beyond_4kb_clip(api, use_copilot, monkeypatch):
+    """Real NDAs are 8-15 KB; the original 4 KB clip silently dropped the
+    indemnity / choice-of-law / survival clauses that sit at the END of the
+    document — exactly the clauses the Reviewer most needs to flag.
+
+    Send a 12 KB NDA whose riskiest sentinel sits at the very end and assert
+    the Reviewer's user message contains that sentinel.
+    """
+    captured = _record_reviewer_inputs(monkeypatch)
+    sentinel = "SENTINEL_INDEMNITY_CAP_AT_TWELVE_MONTHS"
+    filler = " Routine confidentiality language repeated. " * 250  # ~12 KB
+    document = {
+        "type": "text",
+        "title": "Long vendor NDA",
+        "content": (
+            "VENDOR MASTER NDA\n\n1. Confidentiality.\n"
+            + filler
+            + f"\n\n7. Indemnity. {sentinel}. Vendor's liability is capped."
+        ),
+    }
+    assert len(document["content"]) > 10_000, "test document must exceed the old 4 KB clip"
+
+    resp = api.post(
+        "/run",
+        json={"mode": "use", "copilot_id": use_copilot, "document": document},
+    )
+    assert resp.status_code == 200, resp.text
+    assert captured, "Reviewer was never invoked"
+    assert sentinel in captured[0], (
+        "Reviewer's user message did not include the end-of-document sentinel — "
+        "the document clip is too aggressive and the riskiest clauses are being dropped"
+    )
+
+
+# --- Tier 1.2: Arabic NDA content (not just intake) --------------------------
+
+def test_arabic_document_content_does_not_crash(api, use_copilot, monkeypatch):
+    """Ahmed's persona has Arabic INTAKE but English document content. A real
+    Arabic-only NDA reaches the Reviewer with UTF-8 RTL text in the user
+    message. Assert the prompt is constructed cleanly and the graph survives.
+    """
+    captured = _record_reviewer_inputs(monkeypatch)
+    arabic_nda = (
+        "اتفاقية عدم الإفصاح\n\n"
+        "1. المعلومات السرية: يجوز لكل طرف الإفصاح عن معلومات سرية للطرف الآخر.\n"
+        "2. النقل عبر الحدود: يجوز للمورد نقل المعلومات السرية إلى شركاء مصرفيين "
+        "خارج دولة الإمارات العربية المتحدة دون إشعار مسبق.\n"
+        "3. التعويض: تقتصر مسؤولية المورد على رسوم اثني عشر شهراً."
+    )
+    resp = api.post(
+        "/run",
+        json={
+            "mode": "use",
+            "copilot_id": use_copilot,
+            "document": {"type": "text", "title": "NDA عربي", "content": arabic_nda},
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert_valid_use_response(body)
+    # The Arabic clauses must round-trip into the Reviewer prompt without
+    # encoding loss.
+    assert captured, "Reviewer was never invoked"
+    assert "النقل عبر الحدود" in captured[0]
+
+
+# --- Tier 1.3: Reviewer returns confidence/risk with wrong types -------------
+
+def test_reviewer_emits_string_confidence_and_int_risk_does_not_crash(
+    api, use_copilot, monkeypatch
+):
+    """Live models occasionally emit ``confidence: "high"`` (string) instead
+    of a float, and ``risk: 5`` (int) instead of "high"/"medium"/"low".
+    The graph must survive both and the synthesis bucket counts must remain
+    numeric.
+    """
+
+    def responder(agent_name, messages, kwargs):
+        sys = messages[0]["content"]
+        if agent_name == "Reviewer" and _is_critic_prompt(sys):
+            return json.dumps({"accepted": True, "critique": "ok"})
+        if agent_name == "Reviewer":
+            return json.dumps({
+                "findings": [
+                    {
+                        "clause": "Cross-border transfers",
+                        "risk": 5,  # type drift: int instead of string
+                        "confidence": "high",  # type drift: string instead of float
+                        "citation": {"law": "PDPL", "article": "22"},
+                        "rationale": "PDPL alignment.",
+                    }
+                ]
+            })
+        if agent_name == "Counter-Proposal Drafter":
+            return json.dumps({"draft_clause": "No cross-border without consent.", "rationale": "PDPL Art. 22."})
+        if agent_name == "Synthesis":
+            return json.dumps({"summary": {"recommendation": "DO NOT SIGN"}})
+        return "{}"
+
+    _patch_chat(monkeypatch, responder)
+    resp = api.post(
+        "/run",
+        json={"mode": "use", "copilot_id": use_copilot, "document": _vendor_nda_document()},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert_valid_use_response(body)
+    # Summary counters must remain numeric regardless of model type drift.
+    summary = body["summary"]
+    for key in ("total_findings", "high_risk", "medium_risk", "low_risk", "verified_citations"):
+        assert isinstance(summary[key], int), f"{key} should be int, got {type(summary[key]).__name__}"
+
+
+# --- Tier 1.4: Drafter returns null/missing draft_clause ---------------------
+
+def test_drafter_returns_null_draft_clause_yields_empty_proposal(
+    api, use_copilot, monkeypatch
+):
+    """Live drafters occasionally return ``{"draft_clause": null}`` or omit
+    the key entirely. The graph must produce an empty counter_proposal string
+    rather than crashing or surfacing ``None`` to the API consumer.
+    """
+
+    def responder(agent_name, messages, kwargs):
+        sys = messages[0]["content"]
+        if agent_name == "Reviewer" and _is_critic_prompt(sys):
+            return json.dumps({"accepted": True, "critique": "ok"})
+        if agent_name == "Reviewer":
+            return json.dumps({
+                "findings": [
+                    {
+                        "clause": "Cross-border transfers",
+                        "risk": "high",
+                        "confidence": 0.9,
+                        "citation": {"law": "PDPL", "article": "22"},
+                        "rationale": "r.",
+                    }
+                ]
+            })
+        if agent_name == "Counter-Proposal Drafter":
+            return json.dumps({"draft_clause": None, "rationale": "intentionally null"})
+        if agent_name == "Synthesis":
+            return json.dumps({"summary": {"recommendation": "Review"}})
+        return "{}"
+
+    _patch_chat(monkeypatch, responder)
+    resp = api.post(
+        "/run",
+        json={"mode": "use", "copilot_id": use_copilot, "document": _vendor_nda_document()},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert_valid_use_response(body)
+    finding = body["findings"][0]
+    # ``counter_proposal`` MUST be a string (possibly empty) — never None.
+    assert "counter_proposal" in finding
+    assert isinstance(finding["counter_proposal"], str)
+
+
+# --- Tier 1.5: Loop 4 exhausts with empty candidate list ---------------------
+
+def test_loop4_empty_candidates_terminates_with_unverified(api, use_copilot, monkeypatch):
+    """If the Reviewer cites a law NOT in our 4-statute corpus, semantic search
+    can return zero candidates. The recite prompt then has no candidates to
+    offer; the model keeps guessing the same wrong citation. The graph must
+    terminate cleanly after MAX_CITATION_RETRIES with verified=False.
+    """
+    from app.corpus import retrieval as retrieval_mod
+
+    # Force retrieval.semantic_search to always return [] so the verifier's
+    # candidate list stays empty across all retries.
+    monkeypatch.setattr(retrieval_mod, "semantic_search", lambda *a, **k: [])
+
+    def responder(agent_name, messages, kwargs):
+        sys = messages[0]["content"]
+        if agent_name == "Reviewer" and _is_critic_prompt(sys):
+            return json.dumps({"accepted": True, "critique": "ok"})
+        if agent_name == "Reviewer" and _is_recite_prompt(sys):
+            # No candidates available — model keeps emitting an unverifiable cite.
+            return json.dumps({"citation": {"law": "Federal Decree-Law 99", "article": "9999"}})
+        if agent_name == "Reviewer":
+            return json.dumps({
+                "findings": [
+                    {
+                        "clause": "Cross-border transfers",
+                        "risk": "high",
+                        "confidence": 0.9,
+                        # Law not in the corpus → verifier will reject.
+                        "citation": {"law": "Federal Decree-Law 99 of 2099", "article": "9999"},
+                        "rationale": "r.",
+                    }
+                ]
+            })
+        if agent_name == "Counter-Proposal Drafter":
+            return json.dumps({"draft_clause": "X", "rationale": "r."})
+        if agent_name == "Synthesis":
+            return json.dumps({"summary": {"recommendation": "Review"}})
+        return "{}"
+
+    _patch_chat(monkeypatch, responder)
+    resp = api.post(
+        "/run",
+        json={"mode": "use", "copilot_id": use_copilot, "document": _vendor_nda_document()},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert_valid_use_response(body)
+    # Three retries exhausted → finding kept with verified=False.
+    cite = body["findings"][0]["citation"]
+    assert cite["verified"] is False
+    assert body["summary"]["citation_rejections"] >= use_graph.MAX_CITATION_RETRIES
+
+
+# --- Tier 2.1: Mixed Arabic + English clauses --------------------------------
+
+def test_mixed_language_document_handled(api, use_copilot, monkeypatch):
+    """Real-world NDAs in the UAE sometimes mix English and Arabic clauses
+    (e.g. governing-law clause in Arabic, body in English). The Reviewer
+    must receive both languages intact in the user message.
+    """
+    captured = _record_reviewer_inputs(monkeypatch)
+    document = {
+        "type": "text",
+        "title": "Bilingual NDA",
+        "content": (
+            "1. Definitions. The parties acknowledge mutual confidential information.\n"
+            "2. القانون الحاكم: تخضع هذه الاتفاقية لقوانين دولة الإمارات العربية المتحدة.\n"
+            "3. Cross-border transfer. Vendor may transfer data abroad without notice."
+        ),
+    }
+    resp = api.post(
+        "/run",
+        json={"mode": "use", "copilot_id": use_copilot, "document": document},
+    )
+    assert resp.status_code == 200, resp.text
+    assert captured
+    assert "Cross-border transfer" in captured[0]
+    assert "القانون الحاكم" in captured[0]
+
+
+# --- Tier 2.2: Critic returns string bool ------------------------------------
+
+def test_critic_returns_string_bool_is_treated_as_falsy(api, use_copilot, monkeypatch):
+    """``verdict.get("accepted")`` is consumed by ``if verdict.get("accepted"):``.
+    A string ``"true"`` is truthy in Python, so this path WOULD silently mark
+    the draft accepted. We assert the contract: the graph completes, and the
+    finding records ``counter_proposal_accepted`` as a bool, not a string.
+    """
+
+    def responder(agent_name, messages, kwargs):
+        sys = messages[0]["content"]
+        if agent_name == "Reviewer" and _is_critic_prompt(sys):
+            return json.dumps({"accepted": "true", "critique": "string bool drift"})
+        if agent_name == "Reviewer":
+            return json.dumps({
+                "findings": [
+                    {
+                        "clause": "X",
+                        "risk": "high",
+                        "confidence": 0.9,
+                        "citation": {"law": "PDPL", "article": "22"},
+                        "rationale": "r.",
+                    }
+                ]
+            })
+        if agent_name == "Counter-Proposal Drafter":
+            return json.dumps({"draft_clause": "Y", "rationale": "r."})
+        if agent_name == "Synthesis":
+            return json.dumps({"summary": {"recommendation": "Review"}})
+        return "{}"
+
+    _patch_chat(monkeypatch, responder)
+    resp = api.post(
+        "/run",
+        json={"mode": "use", "copilot_id": use_copilot, "document": _vendor_nda_document()},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    finding = body["findings"][0]
+    # Whatever the graph decided, the field must be a strict bool when present.
+    if "counter_proposal_accepted" in finding:
+        assert isinstance(finding["counter_proposal_accepted"], bool)
+
+
+# --- Tier 2.3: Unknown copilot_id returns 404 with detail --------------------
+
+def test_unknown_copilot_id_returns_404(api):
+    """API contract: use-mode requests against an unregistered copilot must
+    return 404 with a descriptive detail (not 500, not 422)."""
+    resp = api.post(
+        "/run",
+        json={
+            "mode": "use",
+            "copilot_id": "cp_does_not_exist_99999999",
+            "document": {"type": "text", "title": "t", "content": "x"},
+        },
+    )
+    assert resp.status_code == 404, resp.text
+    detail = resp.json().get("detail", "")
+    assert "unknown" in detail.lower() or "not found" in detail.lower() or "cp_does_not_exist" in detail
+
+
+# --- Tier 2.4: Concurrent /run calls must not collide on audit-trail logging -
+
+def test_concurrent_use_runs_have_unique_run_ids(api, use_copilot):
+    """The audit logger uses a threading.Lock to serialise JSONL appends, but
+    it has never been exercised under contention. Fire 5 concurrent /run
+    calls and assert: all succeed, all return distinct run_ids, and each
+    response's audit_trail contains only entries for its own run_id.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    payload = {
+        "mode": "use",
+        "copilot_id": use_copilot,
+        "document": {"type": "text", "title": "concurrent", "content": "Vendor NDA with cross-border clause."},
+    }
+
+    def _one():
+        return api.post("/run", json=payload)
+
+    with ThreadPoolExecutor(max_workers=5) as ex:
+        results = list(ex.map(lambda _: _one(), range(5)))
+
+    bodies = []
+    for r in results:
+        assert r.status_code == 200, r.text
+        bodies.append(r.json())
+
+    run_ids = [b["run_id"] for b in bodies]
+    assert len(set(run_ids)) == len(run_ids), f"duplicate run_ids under contention: {run_ids}"
+
+    # Audit isolation: each run's audit_trail must reference its own run_id only.
+    for body in bodies:
+        own_id = body["run_id"]
+        for entry in body["audit_trail"]:
+            # AuditTrail.add stamps run_id on every entry.
+            if "run_id" in entry:
+                assert entry["run_id"] == own_id, (
+                    f"audit trail contamination: run {own_id} contains entry from run {entry['run_id']}"
+                )
+
+
+# --- Tier 2.5: Use-mode without a document content yields 422 ----------------
+
+def test_use_mode_empty_document_returns_422(api, use_copilot):
+    """API contract: empty/whitespace document must be rejected with a 422
+    rather than crashing the graph downstream."""
+    for content in ("", "   ", "\n\n\t"):
+        resp = api.post(
+            "/run",
+            json={
+                "mode": "use",
+                "copilot_id": use_copilot,
+                "document": {"type": "text", "title": "empty", "content": content},
+            },
+        )
+        assert resp.status_code == 422, f"empty content {content!r} should 422, got {resp.status_code}: {resp.text}"

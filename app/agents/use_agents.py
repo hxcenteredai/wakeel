@@ -17,6 +17,15 @@ from app.corpus import retrieval
 from app.logging_utils import AuditTrail
 
 
+# Document clip ceiling for the Reviewer prompt. Real-world NDAs are routinely
+# 8-15 KB; the original 4 KB clip silently dropped the indemnity / choice-of-law
+# / survival clauses that usually sit at the END of the document — exactly the
+# clauses the Reviewer most needs to flag. 16 KB (~4 K tokens) sits well under
+# every Compass model's input limit and Compass uses group-level quotas with no
+# per-request cap, so widening this is safe.
+_DOCUMENT_CLIP_CHARS = 16000
+
+
 # --- System prompts -----------------------------------------------------------
 
 REVIEWER_SYS = (
@@ -128,7 +137,7 @@ def reviewer(
         "interpretation_overrides": overrides,
         "risk_thresholds": thresholds,
         "retrieval_rules": copilot_config.get("retrieval_rules", {}),
-        "document_text": (document.get("content") or "")[:4000],
+        "document_text": (document.get("content") or "")[:_DOCUMENT_CLIP_CHARS],
         "attempt": attempt,
     }
     # Surface the org stance and the document as plain-text directives so live
@@ -181,7 +190,7 @@ def _build_reviewer_user_message(
         for k, v in thresholds.items():
             lines.append(f"  - {k}: {v}")
     title = document.get("title") or "NDA"
-    body = (document.get("content") or "")[:4000]
+    body = (document.get("content") or "")[:_DOCUMENT_CLIP_CHARS]
     lines.append(f"\nDOCUMENT — {title}:\n---\n{body}\n---")
     return "\n".join(lines)
 

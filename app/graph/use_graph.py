@@ -119,7 +119,10 @@ def drafter_node(state: UseState) -> UseState:
         draft = as_dict(agents.counter_proposal_drafter(audit, finding, attempt=1))
         draft_attempts[i] = 1
         drafted[i] = dict(finding)
-        drafted[i]["counter_proposal"] = draft.get("draft_clause", "")
+        # `or ""` defends against the live shape ``{"draft_clause": null}`` —
+        # ``.get(k, "")`` only fires the default when the key is MISSING, not
+        # when its value is None.
+        drafted[i]["counter_proposal"] = draft.get("draft_clause") or ""
         drafted[i]["counter_proposal_iterations"] = 1
         pending_draft.append(i)
 
@@ -182,7 +185,7 @@ def drafter_revise_node(state: UseState) -> UseState:
             attempt=draft_attempts[i],
             critique=feedback_map.get(i, ""),
         ))
-        drafted[i]["counter_proposal"] = draft.get("draft_clause", "")
+        drafted[i]["counter_proposal"] = draft.get("draft_clause") or ""
         drafted[i]["counter_proposal_iterations"] = draft_attempts[i]
 
     state["drafted_findings"] = drafted
