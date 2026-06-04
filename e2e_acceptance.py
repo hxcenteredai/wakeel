@@ -266,10 +266,30 @@ def main() -> int:
         r["ok"] and all(f["citation"].get("verified") for f in r["body"].get("findings", []))
         for r in use_results
     )
-    loop4_fired = "Loop 4" in use_loops
-    loop5_fired = "Loop 5" in use_loops
-    has_real_rejection = total_rejections >= 1  # Loop 4 evidence (not just iteration)
-    has_real_critique = total_critiques >= 1  # Loop 5 evidence
+    # Loop firings are counted from audit_trail entries tagged with the loop
+    # name — symmetric with Loops 1-3 and the same definition the audit log
+    # itself uses. A loop "fires" every time its defining agent runs, regardless
+    # of whether the outcome was accept/reject; rejection counts remain visible
+    # below as a quality signal but are not the gate's pass/fail condition.
+    # (Previously the gate required >=1 rejection, which wrongly penalised a
+    # perfect first-try Reviewer or Drafter — see PO feedback on the M2 live
+    # acceptance run.)
+    loop4_actions = sum(
+        1
+        for r in use_results
+        if r["ok"]
+        for entry in r["body"].get("audit_trail", [])
+        if entry.get("loop") == "Loop 4"
+    )
+    loop5_actions = sum(
+        1
+        for r in use_results
+        if r["ok"]
+        for entry in r["body"].get("audit_trail", [])
+        if entry.get("loop") == "Loop 5"
+    )
+    loop4_fired = loop4_actions >= 1
+    loop5_fired = loop5_actions >= 1
 
     # Hospital Arabic intake — Amendment §3 criterion 4.
     arabic_hospital_ok = False
@@ -292,8 +312,13 @@ def main() -> int:
     m2_gates = [
         ("M2.1", "POST /run mode=use returns verified citations on 3 examples",
          gate(use_all_ok and citations_verified)),
-        ("M2.2", f"Loops 4-5 demonstrably triggering ({total_rejections} L4 rejects, {total_critiques} L5 critiques)",
-         gate(loop4_fired and loop5_fired and has_real_rejection and has_real_critique)),
+        ("M2.2",
+         (
+             f"Loops 4-5 demonstrably triggering "
+             f"({loop4_actions} L4 actions [{total_rejections} rejections], "
+             f"{loop5_actions} L5 actions [{total_critiques} rejections])"
+         ),
+         gate(loop4_fired and loop5_fired)),
         ("M2.3", "NDA copilot works end-to-end against all 3 use-mode inputs",
          gate(use_all_ok)),
         ("M2.4", "Arabic input on Interviewer (build_02_hospital_nda_ar.json)",

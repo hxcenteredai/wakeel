@@ -126,6 +126,18 @@ rejection moment with the actual exact text of the eventually-cited article.
 
 Canonical evidence: `logs/samples/use_mode_run_loops_4_5.jsonl`.
 
+### What counts as a "Loop X firing"
+
+A loop fires every time its defining agent runs — verifier for Loop 4, critic
+for Loop 5 — **regardless of whether the outcome was accept or reject**. This
+is the definition the audit trail itself records (every relevant entry is
+tagged `loop="Loop 4"` or `loop="Loop 5"`), and it is what the M2.2 acceptance
+gate counts. Rejection counts (`summary.citation_rejections`,
+`summary.draft_critiques`) remain in the response as a separate **quality**
+signal — they tell you how often the model needed a second pass — but they
+are not what the gate measures, because a perfect first-try Reviewer/Drafter
+should not be punished for getting it right.
+
 ## 3. LLM client architecture (SOW §6)
 
 ```mermaid
