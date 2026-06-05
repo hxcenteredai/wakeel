@@ -410,18 +410,32 @@ def main() -> None:
     if "build_audit" not in st.session_state:
         st.session_state.build_audit = []
 
-    # Apply any pending mode/copilot switch from a previous "Try it now" click.
-    # This MUST happen before the mode_toggle radio and use_copilot_select
-    # selectbox are instantiated — Streamlit raises if a widget's session_state
-    # key is mutated after its widget has been rendered in the same script run.
+    # Apply any pending switches from a previous "Try it now" click. We manage
+    # the active mode in our own session_state slot (``active_mode``) and feed
+    # it to the radio via ``index=…`` rather than ``key=``. Reason: when a radio
+    # has a ``key`` and we assign ``st.session_state[key] = "Use"`` before it
+    # renders, Streamlit honours the new value for the *return* but does not
+    # always update the *visual* radio dot — the radio ends up showing "Build"
+    # while the page renders Use-mode content, which is confusing for users.
+    # The selectbox in ``_use_mode`` (``use_copilot_select``) does not suffer
+    # from this quirk and is still pre-populated via session_state.
+    if "active_mode" not in st.session_state:
+        st.session_state.active_mode = "Build"
     pending_mode = st.session_state.pop("pending_mode_switch", None)
     if pending_mode in ("Build", "Use"):
-        st.session_state.mode_toggle = pending_mode
+        st.session_state.active_mode = pending_mode
     pending_copilot = st.session_state.pop("pending_copilot_select", None)
     if pending_copilot:
         st.session_state.use_copilot_select = pending_copilot
 
-    mode = st.radio("Mode", ["Build", "Use"], horizontal=True, key="mode_toggle")
+    _mode_options = ["Build", "Use"]
+    mode = st.radio(
+        "Mode",
+        _mode_options,
+        horizontal=True,
+        index=_mode_options.index(st.session_state.active_mode),
+    )
+    st.session_state.active_mode = mode
     st.divider()
 
     chat_col, side_col = st.columns([2, 1], gap="large")
