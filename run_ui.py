@@ -18,6 +18,8 @@ import sys
 import requests
 import streamlit as st
 
+from app.audit_humanizer import humanize as _humanize_entry
+
 BACKEND_URL = os.environ.get("WAKEEL_BACKEND_URL", "http://localhost:8000")
 ARABIC_RE = re.compile(r"[\u0600-\u06FF]")
 
@@ -172,14 +174,18 @@ def _render_audit(container, audit_trail: list[dict]) -> None:
     if loops_seen:
         container.success("Loops fired: " + ", ".join(loops_seen))
     for i, entry in enumerate(audit_trail, 1):
-        label = f"{i}. {entry['agent']} — {entry['action']}"
-        if entry.get("loop"):
-            label += f"  [{entry['loop']}]"
+        # Business-readable headline (see app/audit_humanizer.py).
+        label = f"{i}. {_humanize_entry(entry)}"
         with container.expander(label, expanded=False):
             st.write(f"**Decision:** {entry.get('decision') or '—'}")
             st.write(f"**Reason:** {entry.get('reason') or '—'}")
             if entry.get("details"):
                 st.json(entry["details"])
+            # Technical breadcrumb for engineers / judges cross-referencing logs.
+            st.caption(
+                f"`agent={entry.get('agent', '')}  action={entry.get('action', '')}  "
+                f"loop={entry.get('loop') or '-'}  decision={entry.get('decision') or '-'}`"
+            )
 
 
 def _build_mode(chat_col, side_col) -> None:
@@ -247,9 +253,13 @@ def _build_mode(chat_col, side_col) -> None:
             st.subheader("Copilot config")
             st.code(st.session_state.last_copilot_id)
             # PRD §10: "Try it now" button switches to Use mode pre-populated.
+            # Streamlit forbids writing to a widget's session_state key after the
+            # widget is instantiated, so we stash the request in *pending_* keys
+            # and apply them at the top of main() on the next rerun, before the
+            # mode_toggle radio and use_copilot_select selectbox are rendered.
             if st.button("Try it now", type="primary", key="try_it_now_btn"):
-                st.session_state.mode_toggle = "Use"
-                st.session_state.use_copilot_select = st.session_state.last_copilot_id
+                st.session_state.pending_mode_switch = "Use"
+                st.session_state.pending_copilot_select = st.session_state.last_copilot_id
                 st.rerun()
             st.json(st.session_state.last_config)
 
@@ -400,7 +410,32 @@ def main() -> None:
     if "build_audit" not in st.session_state:
         st.session_state.build_audit = []
 
-    mode = st.radio("Mode", ["Build", "Use"], horizontal=True, key="mode_toggle")
+    # Apply any pending switches from a previous "Try it now" click. We manage
+    # the active mode in our own session_state slot (``active_mode``) and feed
+    # it to the radio via ``index=…`` rather than ``key=``. Reason: when a radio
+    # has a ``key`` and we assign ``st.session_state[key] = "Use"`` before it
+    # renders, Streamlit honours the new value for the *return* but does not
+    # always update the *visual* radio dot — the radio ends up showing "Build"
+    # while the page renders Use-mode content, which is confusing for users.
+    # The selectbox in ``_use_mode`` (``use_copilot_select``) does not suffer
+    # from this quirk and is still pre-populated via session_state.
+    if "active_mode" not in st.session_state:
+        st.session_state.active_mode = "Build"
+    pending_mode = st.session_state.pop("pending_mode_switch", None)
+    if pending_mode in ("Build", "Use"):
+        st.session_state.active_mode = pending_mode
+    pending_copilot = st.session_state.pop("pending_copilot_select", None)
+    if pending_copilot:
+        st.session_state.use_copilot_select = pending_copilot
+
+    _mode_options = ["Build", "Use"]
+    mode = st.radio(
+        "Mode",
+        _mode_options,
+        horizontal=True,
+        index=_mode_options.index(st.session_state.active_mode),
+    )
+    st.session_state.active_mode = mode
     st.divider()
 
     chat_col, side_col = st.columns([2, 1], gap="large")
