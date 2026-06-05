@@ -41,7 +41,7 @@ MODELS: dict[str, str] = {
 INTERVIEWER_MODEL: str = os.environ.get("INTERVIEWER_MODEL", "").strip()
 
 # --- Behaviour flags ---
-SAMPLE_MODE: bool = _as_bool(os.environ.get("SAMPLE_MODE"), default=True)
+SAMPLE_MODE: bool = _as_bool(os.environ.get("SAMPLE_MODE"), default=False)
 SAMPLE_MODE_MAX_TOKENS: int = int(os.environ.get("SAMPLE_MODE_MAX_TOKENS", "300"))
 
 # Offline mode is forced on when no API key is configured, so the system is

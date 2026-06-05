@@ -13,6 +13,14 @@ Amendment §3 criterion 6 live in [`demos/`](demos/RUNBOOK.md).
 
 ---
 
+> ⚖️ **Disclaimer — not legal advice.** Wakeel is a decision-support tool
+> for qualified compliance and legal professionals. Its findings, citations,
+> risk ratings, and counter-proposals are **informational only**, may contain
+> errors, and must be reviewed by a licensed attorney before any reliance or
+> action. Wakeel does not create an attorney–client relationship and is not a
+> substitute for professional legal judgment. Every output ships with an audit
+> trail and confidence scores precisely so a human reviewer stays in the loop.
+
 ## 1. Problem Statement
 
 Compliance officers and in-house counsel across UAE enterprises review high
