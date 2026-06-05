@@ -439,9 +439,13 @@ python scripts/screenshots/annotate_use_mode.py
 - `output_examples/use_mode/02_balanced_partner_nda.out.json`
 - `output_examples/use_mode/03_data_broker_nda.out.json`
 
-Each output is structurally valid (PRD §9 schema: `run_id, mode, copilot_id,
-findings, summary, audit_trail`) and **every finding has
-`citation.verified=true`**. Differentiation across the three inputs:
+Each output is the **full /run response envelope** —
+`status, agents, trace_id, log_file, execution_time_seconds` at the top
+level, with the PRD §9 use-mode payload (`run_id, mode, copilot_id,
+findings, summary, audit_trail`) spread underneath. The envelope wraps the
+§9 contract without removing or renaming any field, so a §9-only consumer
+still finds every required field in its expected place, and **every finding
+has `citation.verified=true`**. Differentiation across the three inputs:
 
 | Input | Findings | High | Med | Low | L4 rejections | L5 critiques | Recommendation |
 |---|---|---|---|---|---|---|---|

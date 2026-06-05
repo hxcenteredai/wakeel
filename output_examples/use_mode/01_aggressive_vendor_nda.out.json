@@ -1,7 +1,53 @@
 {
+  "status": "success",
+  "agents": [
+    {
+      "name": "Interviewer",
+      "role": "Extracts structured requirements; accepts Arabic or English input"
+    },
+    {
+      "name": "Stance Debater A",
+      "role": "Argues strict-compliance interpretation"
+    },
+    {
+      "name": "Stance Debater B",
+      "role": "Argues business-practical interpretation"
+    },
+    {
+      "name": "Architect",
+      "role": "Synthesizes requirements and debate into a copilot config"
+    },
+    {
+      "name": "Builder",
+      "role": "Instantiates the copilot from the config"
+    },
+    {
+      "name": "Validator",
+      "role": "Runs sample inputs through the new copilot and rejects if substandard"
+    },
+    {
+      "name": "Reviewer",
+      "role": "Reviews documents against the org-tuned stance"
+    },
+    {
+      "name": "Citation Verifier",
+      "role": "Validates every regulatory citation against the corpus via exact-text retrieval"
+    },
+    {
+      "name": "Counter-Proposal Drafter",
+      "role": "Drafts replacement clauses for flagged risks"
+    },
+    {
+      "name": "Synthesis",
+      "role": "Assembles final output with confidence scores and audit trail"
+    }
+  ],
+  "trace_id": "<deterministic-offline-trace>",
+  "log_file": "logs/run_<deterministic-offline-trace>.jsonl",
+  "execution_time_seconds": 0.0,
   "run_id": "<deterministic-offline-run>",
   "mode": "use",
-  "copilot_id": "cp_75011441",
+  "copilot_id": "cp_a6944a76",
   "findings": [
     {
       "clause": "Vendor may transfer Confidential Information to its banking partners outside the UAE without further notice to the Discloser.",
@@ -61,17 +107,19 @@
   },
   "audit_trail": [
     {
-      "run_id": "b05c632b-e5ab-49cf-9e53-06e4ac41c01a",
+      "run_id": "<deterministic-offline-run>",
       "mode": "use",
       "agent": "orchestrator",
       "action": "run_start",
       "decision": "use",
-      "reason": "POST /run mode=use copilot=cp_75011441",
+      "reason": "POST /run mode=use copilot=cp_a6944a76",
       "loop": null,
-      "details": {}
+      "details": {
+        "copilot_id": "cp_a6944a76"
+      }
     },
     {
-      "run_id": "b05c632b-e5ab-49cf-9e53-06e4ac41c01a",
+      "run_id": "<deterministic-offline-run>",
       "mode": "use",
       "agent": "Reviewer",
       "action": "review_document",
@@ -84,7 +132,7 @@
       }
     },
     {
-      "run_id": "b05c632b-e5ab-49cf-9e53-06e4ac41c01a",
+      "run_id": "<deterministic-offline-run>",
       "mode": "use",
       "agent": "Citation Verifier",
       "action": "verify_citation",
@@ -103,7 +151,7 @@
       }
     },
     {
-      "run_id": "b05c632b-e5ab-49cf-9e53-06e4ac41c01a",
+      "run_id": "<deterministic-offline-run>",
       "mode": "use",
       "agent": "Citation Verifier",
       "action": "verify_citation",
@@ -118,7 +166,7 @@
       }
     },
     {
-      "run_id": "b05c632b-e5ab-49cf-9e53-06e4ac41c01a",
+      "run_id": "<deterministic-offline-run>",
       "mode": "use",
       "agent": "Citation Verifier",
       "action": "verify_citation",
@@ -133,7 +181,7 @@
       }
     },
     {
-      "run_id": "b05c632b-e5ab-49cf-9e53-06e4ac41c01a",
+      "run_id": "<deterministic-offline-run>",
       "mode": "use",
       "agent": "Reviewer",
       "action": "re_cite",
@@ -148,12 +196,15 @@
         },
         "proposed": {
           "law": "Federal Decree-Law 45 of 2021",
-          "article": "7"
+          "article": "7",
+          "verified": true,
+          "exact_text": "Article (7)\nWhere processing is based on consent, the Controller must be able to demonstrate\nthat the Data Subject has given consent to the processing of Personal Data. The\nData Subject may withdraw consent at any time, and withdrawal shall be as easy as\ngiving consent. Consent must be given by a clear affirmative act, freely, in a\nspecific and unambiguous manner.",
+          "verification_attempts": 2
         }
       }
     },
     {
-      "run_id": "b05c632b-e5ab-49cf-9e53-06e4ac41c01a",
+      "run_id": "<deterministic-offline-run>",
       "mode": "use",
       "agent": "Citation Verifier",
       "action": "verify_citation",
@@ -168,7 +219,7 @@
       }
     },
     {
-      "run_id": "b05c632b-e5ab-49cf-9e53-06e4ac41c01a",
+      "run_id": "<deterministic-offline-run>",
       "mode": "use",
       "agent": "Counter-Proposal Drafter",
       "action": "draft_counter_proposal",
@@ -181,7 +232,7 @@
       }
     },
     {
-      "run_id": "b05c632b-e5ab-49cf-9e53-06e4ac41c01a",
+      "run_id": "<deterministic-offline-run>",
       "mode": "use",
       "agent": "Counter-Proposal Drafter",
       "action": "draft_counter_proposal",
@@ -194,7 +245,7 @@
       }
     },
     {
-      "run_id": "b05c632b-e5ab-49cf-9e53-06e4ac41c01a",
+      "run_id": "<deterministic-offline-run>",
       "mode": "use",
       "agent": "Reviewer",
       "action": "critique_draft",
@@ -207,7 +258,7 @@
       }
     },
     {
-      "run_id": "b05c632b-e5ab-49cf-9e53-06e4ac41c01a",
+      "run_id": "<deterministic-offline-run>",
       "mode": "use",
       "agent": "Reviewer",
       "action": "critique_draft",
@@ -220,7 +271,7 @@
       }
     },
     {
-      "run_id": "b05c632b-e5ab-49cf-9e53-06e4ac41c01a",
+      "run_id": "<deterministic-offline-run>",
       "mode": "use",
       "agent": "Counter-Proposal Drafter",
       "action": "draft_counter_proposal",
@@ -233,7 +284,7 @@
       }
     },
     {
-      "run_id": "b05c632b-e5ab-49cf-9e53-06e4ac41c01a",
+      "run_id": "<deterministic-offline-run>",
       "mode": "use",
       "agent": "Counter-Proposal Drafter",
       "action": "draft_counter_proposal",
@@ -246,7 +297,7 @@
       }
     },
     {
-      "run_id": "b05c632b-e5ab-49cf-9e53-06e4ac41c01a",
+      "run_id": "<deterministic-offline-run>",
       "mode": "use",
       "agent": "Reviewer",
       "action": "critique_draft",
@@ -259,7 +310,7 @@
       }
     },
     {
-      "run_id": "b05c632b-e5ab-49cf-9e53-06e4ac41c01a",
+      "run_id": "<deterministic-offline-run>",
       "mode": "use",
       "agent": "Reviewer",
       "action": "critique_draft",
@@ -272,7 +323,7 @@
       }
     },
     {
-      "run_id": "b05c632b-e5ab-49cf-9e53-06e4ac41c01a",
+      "run_id": "<deterministic-offline-run>",
       "mode": "use",
       "agent": "Synthesis",
       "action": "assemble_response",
@@ -286,7 +337,7 @@
       }
     },
     {
-      "run_id": "b05c632b-e5ab-49cf-9e53-06e4ac41c01a",
+      "run_id": "<deterministic-offline-run>",
       "mode": "use",
       "agent": "orchestrator",
       "action": "run_complete",
