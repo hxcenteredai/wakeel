@@ -286,11 +286,15 @@ def run_use(copilot_id: str, document: dict[str, Any]) -> dict[str, Any]:
 
     run_id = str(uuid.uuid4())
     audit = AuditTrail(run_id, mode="use")
+    # copilot_id stamped in `details` so per-copilot decision history
+    # (GET /decisions/{copilot_id}) can structurally filter use-mode runs
+    # without relying on string-parsing the reason field.
     audit.add(
         agent="orchestrator",
         action="run_start",
         decision="use",
         reason=f"POST /run mode=use copilot={copilot_id}",
+        details={"copilot_id": copilot_id},
     )
 
     initial: UseState = {
