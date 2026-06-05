@@ -155,6 +155,253 @@ variations (every citation verified, all `UseResponse` fields present).
 
 ---
 
+## Section F — UI polish for the v1.0 customer demo (2026-06-05)
+
+Sections A–E above are the **M2 submission baseline** — they prove every
+M2 acceptance criterion. They were captured against the technical-label
+audit panel that ships in `main` today.
+
+Section F is the **post-merge UI iteration** triggered by PO demo testing
+on 2026-06-05. The PO ran the founder team's M2 build against a live
+customer-style scenario and surfaced two issues that affect demo quality
+but are not gated by the M2 acceptance criteria:
+
+1. **"Try it now" auto-switch crashed the UI** with `StreamlitAPIException`
+   (`st.session_state.mode_toggle cannot be modified after the widget
+   with key mode_toggle is instantiated`). The crash blocked the
+   build-mode demo video at the moment of handing off the newly-minted
+   copilot into Use mode — the centerpiece of PRD §10.
+2. **Audit panel labels were too technical for non-developer demo
+   audiences.** Entries rendered as raw machine-readable strings
+   (`Interviewer — extract_requirements [Loop 3]`) which read as code,
+   not workflow. The PO requested business-readable labels for the
+   target audience (in-house counsel, GCs, paralegals).
+
+A third issue was discovered during end-to-end verification of the
+fixes and was patched in the same delivery:
+
+3. **Mode-radio visual state did not always follow programmatic
+   switches.** After "Try it now" set `st.session_state.mode_toggle =
+   "Use"`, the script's `mode` variable correctly returned `"Use"` but
+   the radio dot in the DOM still showed `Build` highlighted — visually
+   contradicting the rendered Use-mode content.
+
+All three issues are fixed on `feat/m2-use-mode-delivery` and verified
+end-to-end through a real browser session against an offline backend
+(no LLM spend). Every screenshot in this section is from that session.
+
+- **Run date:** 2026-06-05
+- **Backend:** `uvicorn app.api:app` on `http://127.0.0.1:8000` — `OFFLINE_MODE=true`
+- **Frontend:** `streamlit run run_ui.py` on `http://127.0.0.1:8001`
+- **Verification harness:** Cursor browser MCP driving Chromium directly,
+  accessibility-snapshot–based assertions on every audit entry label and
+  every radio-dot state.
+
+> Glyph note: the `⟳` (clockwise gapped circle arrow) used as the "loop
+> firing" status icon falls back to a plain `○` open circle in Streamlit's
+> default UI font on macOS. Meaning is still distinct from `✓` and `▶`,
+> but a one-character swap to `↻` or `🔄` is a follow-up demo polish if
+> the open circle reads as ambiguous in any recorded demo.
+
+### F.1 Build mode — humanized audit panel (top half)
+
+`Interviewer — extract_requirements [Loop 3]` becomes
+`✓ Loop 3: Interview clarification round complete`. Every entry is now
+a workflow narrative with a status icon (`▶` run boundary, `✓` success,
+`⟳` loop iteration, `ℹ` informational, `⚠` warning).
+
+![F1 build audit humanized top](use-mode-evidence/ui-polish/F1-build-audit-humanized-top.png)
+
+Labels visible in this frame (verbatim, captured from DOM):
+
+- `▶ Build run started`
+- `ℹ Interviewer asked the user for clarification`
+- `✓ Strict Compliance position drafted (Debater A) — 3 arguments`
+- `✓ Business Practical position drafted (Debater B) — 3 arguments`
+- `⟳ Loop 3: Architect requested interview clarification`
+- `✓ Loop 3: Interview clarification round complete`
+- `⟳ Loop 1: extra debate round requested by Architect`
+
+The `Loops fired: Loop 1, Loop 2, Loop 3` green pill above the entries
+is unchanged from Sections A–E — preserves the existing gate-counting
+story.
+
+### F.2 Build mode — Validator iteration + finish (bottom half)
+
+Continuing the same panel. The Validator's first attempt is rejected
+(Loop 2 fires), Builder iterates, second attempt passes with score
+0.91, run complete. The big red **Try it now** primary CTA sits in the
+sidebar below — the fixed button from issue 1.
+
+![F2 build audit humanized bottom](use-mode-evidence/ui-polish/F2-build-audit-humanized-bottom.png)
+
+- `⟳ Loop 2: Validator rejected on attempt 1 — Builder iterating (score 0.62)`
+- `✓ Builder assembled copilot configuration (cp_f7d96da7)` — copilot ID
+  surfaced from `details.copilot_id` so the demo audience immediately
+  sees the identifier they'll use in Use mode
+- `✓ Copilot validated (score 0.91, passed)` — final pass
+- `▶ Run complete`
+
+### F.3 Expander body — raw forensic detail preserved
+
+Clicking any humanized entry opens the expander, which still shows the
+exact same raw `Decision` / `Reason` / `details` JSON that Sections
+A–E used. **Forensic trail is unchanged for engineers, judges, and
+anyone cross-referencing `logs/run_*.jsonl`.**
+
+![F3 expander validator rejected](use-mode-evidence/ui-polish/F3-expander-validator-rejected.png)
+
+Shown here: the Validator-rejected entry expanded. Decision, Reason,
+and the start of the `issues[]` array are all visible.
+
+### F.4 Technical breadcrumb at the bottom of every expander
+
+New in this delivery: each expander ends with a monospace breadcrumb
+carrying the original technical fields, so engineers can still
+grep/diff against the JSONL logs without losing the human narrative on
+top:
+
+> ` agent=Validator  action=validate_copilot  loop=Loop 2  decision=rejected `
+
+![F4 expander breadcrumb](use-mode-evidence/ui-polish/F4-expander-breadcrumb.png)
+
+The two `issues[]` strings visible in the JSON are exactly what the
+Validator surfaced in this run ("Reviewer prompt does not enforce
+citation on every regulatory claim." and "Risk threshold for
+data_transfer_abroad not wired to auto-escalation."). The downstream
+Builder retry addresses both before the next Validator pass.
+
+### F.5 "Try it now" handoff — Issue 1 fix + radio visual fix verified
+
+Click "Try it now" on the just-built copilot → the page flips to Use
+mode, **no exception**, the mode radio visually shows Use (not Build),
+the copilot dropdown is pre-populated with the freshly-minted id.
+
+![F5 try it now handoff](use-mode-evidence/ui-polish/F5-try-it-now-handoff.png)
+
+This frame closes the loop on the most critical demo moment per PRD
+§10: build a copilot → click one button → start reviewing a real NDA
+against it without picking up the keyboard.
+
+### F.6 Use mode — Aggressive vendor NDA — Loops 4 + 5 humanized
+
+Loaded the **Aggressive vendor NDA (triggers Loops 4 + 5)** committed
+example, clicked Review. Audit panel renders **word-for-word matching
+the PO's mockup format**:
+
+![F6 use audit loops 4 + 5](use-mode-evidence/ui-polish/F6-use-audit-loops-4-5.png)
+
+The headline Loop 4 narrative (verbatim from the DOM):
+
+> `⟳ Loop 4: Citation rejected (Federal Decree-Law 45 of 2021 Article 99
+> not found in corpus — Reviewer must re-cite)`
+
+Followed by the recovery:
+
+> `✓ Citation verified: Federal Law 18 of 1993, Article 87`
+> `✓ Citation verified: Federal Law 5 of 1985, Article 246`
+> `⟳ Loop 4: Reviewer re-cited (attempt 2)`
+> `✓ Citation verified: Federal Decree-Law 45 of 2021, Article 7`
+
+This is the same Loop 4 mechanism Sections A–E proved at the
+acceptance-gate level — Section F just makes it readable for the
+intended demo audience.
+
+### F.7 Aggressive NDA — recommendation card + Loop 5 in narrative form
+
+Submit completes. The recommendation card, metrics, and findings
+render as before (proven in Section C); what's new is the right
+column, where the Loop 5 "critic accepted draft" dance shows up as
+plain English narrative:
+
+![F7 aggressive findings with loop 5](use-mode-evidence/ui-polish/F7-aggressive-findings-with-loop5.png)
+
+- `✓ Counter-proposal drafted — 'Vendor may transfer Confidential Information to its banking …'`
+- `⟳ Loop 5: Critic rejected draft (attempt 1) — Drafter revising`
+- `⟳ Loop 5: Counter-proposal revised (attempt 2)`
+- `✓ Critic accepted counter-proposal (attempt 2)`
+
+The Finding 1 card on the left still carries the `verified on attempt
+2` annotation from Section C — Loop 4 narrative is preserved.
+
+### F.8 Data-broker NDA — DO NOT SIGN, 5 findings, 4 Loop-5 critiques
+
+The high-risk data-broker NDA exercises the deepest Loop 5 chain in the
+committed examples — 4 separate counter-proposals all critiqued by the
+Reviewer, revised by the Drafter, and accepted on attempt 2.
+
+![F8 data-broker do not sign](use-mode-evidence/ui-polish/F8-databroker-do-not-sign.png)
+
+- **Recommendation: DO NOT SIGN as-is — material PDPL risk on
+  cross-border transfer** (red banner)
+- Metrics: 5 findings, 2 High, 2 Medium, 1 Loop-4 rejection,
+  4 Loop-5 critiques
+- Final synthesis line:
+  `✓ Synthesis complete — 5 findings finalized (Loop 4 rejections: 1, Loop 5 critiques: 4)`
+  — the Loop counts are surfaced inline so the demo can land "the
+  council had to iterate 5 times on this single NDA before producing
+  a defensible verdict".
+
+This is also the most stress-testing frame: 27 distinct audit entries,
+every one rendered through the humanizer with no fallbacks triggered.
+
+### F.9 Bilingual demo — Arabic intake with RTL rendering
+
+Same `run_ui.py`, Arabic workflow description typed into the chat:
+
+> أحتاج مساعداً لمراجعة اتفاقيات عدم الإفصاح لمستشفى في دبي، مع التزام صارم بقانون حماية البيانات الشخصية
+
+The Interviewer detects Arabic and responds in Arabic, right-to-left
+aligned: **تم استلام طلبك. جارٍ بناء المساعد.** (≈ "Got your request,
+building the assistant."). A new copilot `cp_f90425c6` is minted with
+validation 0.91 passed.
+
+![F9 arabic build rtl](use-mode-evidence/ui-polish/F9-arabic-build-rtl.png)
+
+The audit panel on the right keeps the same English humanized labels
+(consistent for the operator / auditor view regardless of intake
+language) — `⟳ Loop 3: Architect requested interview clarification`,
+`✓ Loop 3: Interview clarification round complete`, etc. This proves
+the humanizer is language-agnostic at the audit layer and the bilingual
+support promised in M2 Criterion 4 is preserved end-to-end through the
+new UI.
+
+### Section F regression coverage
+
+The humanizer logic lives in `app/audit_humanizer.py`. Test coverage:
+
+- `tests/test_audit_humanizer.py` — **32 tests**, one per
+  `(agent, action, decision, loop)` combination the council emits
+  across build + use modes, plus fallback + partial-entry edge cases.
+  Any new agent action added later must either map to a narrative
+  string or fall through to the raw `agent — action [loop] (decision)`
+  format — never crash.
+
+Full suite at the time of this section's capture: **106 passed,
+1 skipped** (the live-only test, gated on `--live`).
+
+### Section F reproduction
+
+```bash
+# Backend in offline mode
+OFFLINE_MODE=true PYTHONPATH=. \
+  python -m uvicorn app.api:app --host 127.0.0.1 --port 8000 &
+
+# UI
+OFFLINE_MODE=true WAKEEL_BACKEND_URL=http://127.0.0.1:8000 PYTHONPATH=. \
+  streamlit run run_ui.py --server.port 8001 --server.headless true &
+
+# Then in a browser at http://127.0.0.1:8001:
+#   1. Type any build workflow → wait for "Run complete" → see F.1, F.2
+#   2. Click any audit entry → see F.3, F.4
+#   3. Click "Try it now" → see F.5
+#   4. Pick "Aggressive vendor NDA" from the example loader → Review document → see F.6, F.7
+#   5. Pick "Data-broker NDA (high-risk)" → Review document → see F.8
+#   6. Switch back to Build, type an Arabic prompt → see F.9
+```
+
+---
+
 ## Reproducing the visual walkthrough locally
 
 ```bash
