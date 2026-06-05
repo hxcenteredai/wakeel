@@ -247,9 +247,13 @@ def _build_mode(chat_col, side_col) -> None:
             st.subheader("Copilot config")
             st.code(st.session_state.last_copilot_id)
             # PRD §10: "Try it now" button switches to Use mode pre-populated.
+            # Streamlit forbids writing to a widget's session_state key after the
+            # widget is instantiated, so we stash the request in *pending_* keys
+            # and apply them at the top of main() on the next rerun, before the
+            # mode_toggle radio and use_copilot_select selectbox are rendered.
             if st.button("Try it now", type="primary", key="try_it_now_btn"):
-                st.session_state.mode_toggle = "Use"
-                st.session_state.use_copilot_select = st.session_state.last_copilot_id
+                st.session_state.pending_mode_switch = "Use"
+                st.session_state.pending_copilot_select = st.session_state.last_copilot_id
                 st.rerun()
             st.json(st.session_state.last_config)
 
@@ -399,6 +403,17 @@ def main() -> None:
         st.session_state.build_messages = []
     if "build_audit" not in st.session_state:
         st.session_state.build_audit = []
+
+    # Apply any pending mode/copilot switch from a previous "Try it now" click.
+    # This MUST happen before the mode_toggle radio and use_copilot_select
+    # selectbox are instantiated — Streamlit raises if a widget's session_state
+    # key is mutated after its widget has been rendered in the same script run.
+    pending_mode = st.session_state.pop("pending_mode_switch", None)
+    if pending_mode in ("Build", "Use"):
+        st.session_state.mode_toggle = pending_mode
+    pending_copilot = st.session_state.pop("pending_copilot_select", None)
+    if pending_copilot:
+        st.session_state.use_copilot_select = pending_copilot
 
     mode = st.radio("Mode", ["Build", "Use"], horizontal=True, key="mode_toggle")
     st.divider()
