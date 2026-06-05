@@ -380,6 +380,20 @@ lists what has been built.
 `logs/run_<run_id>.jsonl` and returned in the API response, then rendered in the
 Streamlit sidebar.
 
+### Decision history per copilot (read-side)
+
+`app/decision_history.py` exposes a pure read function over the same JSONL
+files: `history_for_copilot(copilot_id)` scans `logs/run_*.jsonl`, groups
+entries by run, filters to runs that reference the given `copilot_id`, and
+returns a list of per-run summaries (mode, started/ended timestamps, entry
+count, loops fired, full entries). It is the read counterpart to
+`AuditTrail.add` — same files, no extra storage. Surfaced via the
+`GET /decisions/{copilot_id}` endpoint described in §9. The
+`copilot_id` is recovered structurally: build-mode logs carry it in the
+Builder action's `details.copilot_id`; use-mode logs carry it in the
+orchestrator's `run_start` `details.copilot_id` (with a defensive
+fallback parse of the `reason` field for older logs predating that tag).
+
 ## 9. Services & ports
 
 | Service | Entry | Port |
@@ -391,6 +405,17 @@ Both run together via `docker-entrypoint.sh` in the Docker image. Verified clean
 build + run from a fresh clone with both ports responding under 2s; full
 use-mode arc through the container reproduces the canonical Loop 4/5 evidence —
 see [`docs/use-mode-evidence.md`](use-mode-evidence.md).
+
+### HTTP endpoints
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET  | `/health` | Liveness + current LLM client config (key masked). |
+| GET  | `/config` | Current LLM provider configuration. |
+| POST | `/config` | Runtime provider/model swap (front-end provider switch). |
+| GET  | `/copilots` | List copilots currently registered in `data/copilots/`. |
+| POST | `/run` | Build mode (`mode="build"`) or use mode (`mode="use"`). |
+| GET  | `/decisions/{copilot_id}` | Full decision history for a copilot — every run, every audit-trail entry. Read-only wrapper over `logs/run_*.jsonl`; returns `{copilot_id, total_runs, total_decisions, runs: [{run_id, mode, started_at, ended_at, entry_count, loops_fired, entries}]}`. 404 if the copilot is not in the registry. |
 
 ## 10. Design Decisions and Trade-offs
 

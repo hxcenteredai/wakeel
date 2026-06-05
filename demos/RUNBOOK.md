@@ -79,6 +79,24 @@ acceptable per SOW §2.
 
 **Must capture:** the Citation Verifier rejection moment is the demo's main visual asset (PRD §16: "Pause on the rejection log. This is the moment.").
 
+**Optional companion shot (B-roll, 5–10s) — decision history endpoint.** After
+the use-mode run finishes, drop to a terminal and run:
+
+```bash
+curl -s http://localhost:8000/decisions/<cp_xxx> | jq '{
+  copilot_id,
+  total_runs,
+  total_decisions,
+  runs: [.runs[] | {run_id, mode, loops_fired, entry_count}]
+}'
+```
+
+Show the structured response — every run this copilot ever made, including
+the one that just finished, with `loops_fired` listing `Loop 4` and `Loop 5`.
+This makes the "decisions are persistent and queryable" story explicit:
+every decision the copilot makes is auditable via a single HTTP call, no
+filesystem access needed.
+
 ---
 
 ## 3. `03_arabic_intake_walkthrough.mp4` (60–90s)

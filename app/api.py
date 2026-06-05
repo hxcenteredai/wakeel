@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from fastapi import FastAPI, HTTPException
 
-from app import copilot_registry, llm
+from app import copilot_registry, decision_history, llm
 from app.graph.build_graph import run_build
 from app.graph.use_graph import run_use
 from app.schemas import LLMConfigUpdate, RunRequest
@@ -44,6 +44,28 @@ def set_config(update: LLMConfigUpdate) -> dict:
 def list_copilots() -> dict:
     """List copilots currently registered (built via mode=build)."""
     return {"copilots": copilot_registry.list_copilots()}
+
+
+@app.get("/decisions/{copilot_id}")
+def get_decisions(copilot_id: str) -> dict:
+    """Return the full decision history for a copilot.
+
+    Read-only wrapper around the existing ``logs/run_*.jsonl`` audit trails:
+    scans every run, filters to runs that reference ``copilot_id``, groups
+    the entries per run, and returns a structured response with per-run
+    metadata (mode, timestamps, loops fired) alongside the raw entries.
+
+    Pure file read. No new database, no schema, no new dependencies.
+    """
+    if copilot_registry.load(copilot_id) is None:
+        raise HTTPException(status_code=404, detail=f"unknown copilot_id: {copilot_id}")
+    runs = decision_history.history_for_copilot(copilot_id)
+    return {
+        "copilot_id": copilot_id,
+        "total_runs": len(runs),
+        "total_decisions": sum(r["entry_count"] for r in runs),
+        "runs": runs,
+    }
 
 
 @app.post("/run")
