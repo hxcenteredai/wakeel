@@ -18,6 +18,8 @@ import sys
 import requests
 import streamlit as st
 
+from app.audit_humanizer import humanize as _humanize_entry
+
 BACKEND_URL = os.environ.get("WAKEEL_BACKEND_URL", "http://localhost:8000")
 ARABIC_RE = re.compile(r"[\u0600-\u06FF]")
 
@@ -172,14 +174,18 @@ def _render_audit(container, audit_trail: list[dict]) -> None:
     if loops_seen:
         container.success("Loops fired: " + ", ".join(loops_seen))
     for i, entry in enumerate(audit_trail, 1):
-        label = f"{i}. {entry['agent']} — {entry['action']}"
-        if entry.get("loop"):
-            label += f"  [{entry['loop']}]"
+        # Business-readable headline (see app/audit_humanizer.py).
+        label = f"{i}. {_humanize_entry(entry)}"
         with container.expander(label, expanded=False):
             st.write(f"**Decision:** {entry.get('decision') or '—'}")
             st.write(f"**Reason:** {entry.get('reason') or '—'}")
             if entry.get("details"):
                 st.json(entry["details"])
+            # Technical breadcrumb for engineers / judges cross-referencing logs.
+            st.caption(
+                f"`agent={entry.get('agent', '')}  action={entry.get('action', '')}  "
+                f"loop={entry.get('loop') or '-'}  decision={entry.get('decision') or '-'}`"
+            )
 
 
 def _build_mode(chat_col, side_col) -> None:
