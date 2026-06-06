@@ -492,9 +492,30 @@ curl -X POST localhost:8000/run -H 'Content-Type: application/json' \
   }'
 ```
 
-**Response:** `run_id`, `copilot_id`, `config`, `validation_results`,
-`audit_trail`, `interviewer_response`. Full samples in
-[`output_examples/build_mode/`](output_examples/build_mode/).
+**Response (full envelope):**
+
+```jsonc
+{
+  "status": "success",
+  "agents": [                                  // sourced from metadata.json
+    {"name": "Interviewer", "role": "Extracts structured requirements; ..."},
+    // ... 9 more entries
+  ],
+  "trace_id": "e319c0bf-1b46-472b-b17b-a8ec4f2179c9",   // equals run_id on success
+  "log_file": "logs/run_e319c0bf-1b46-472b-b17b-a8ec4f2179c9.jsonl",
+  "execution_time_seconds": 0.007077,          // wall-clock float
+  // --- PRD §9 build payload spread underneath ---
+  "run_id": "e319c0bf-1b46-472b-b17b-a8ec4f2179c9",
+  "mode": "build",
+  "copilot_id": "cp_a6944a76",
+  "config": { /* full copilot config */ },
+  "validation_results": { /* sample-run summary */ },
+  "audit_trail": [ /* full agent interaction log */ ],
+  "interviewer_response": "..."
+}
+```
+
+Full samples in [`output_examples/build_mode/`](output_examples/build_mode/).
 
 ### Use Mode — review a document
 
@@ -513,9 +534,45 @@ curl -X POST localhost:8000/run -H 'Content-Type: application/json' \
   }'
 ```
 
-**Response:** `run_id`, `findings` (each with verified `citation`), `summary`
-(counts, risk buckets, recommendation), `audit_trail`. Full samples in
-[`output_examples/use_mode/`](output_examples/use_mode/).
+**Response (same envelope, use-mode payload underneath):**
+
+```jsonc
+{
+  "status": "success",
+  "agents": [ /* same 10-agent inventory from metadata.json */ ],
+  "trace_id": "9a10a611-...",
+  "log_file": "logs/run_9a10a611-....jsonl",
+  "execution_time_seconds": 0.004,
+  // --- PRD §9 use payload spread underneath ---
+  "run_id": "9a10a611-...",
+  "mode": "use",
+  "copilot_id": "cp_a6944a76",
+  "findings": [ /* each with citation.verified=true */ ],
+  "summary": { /* counts, risk buckets, recommendation banner */ },
+  "audit_trail": [ /* per-agent + per-loop entries */ ]
+}
+```
+
+**Error response (any /run failure):**
+
+```jsonc
+{
+  "status": "error",
+  "error": {
+    "type": "validation_error",         // | "not_found" | "internal_error" | "client_error"
+    "message": "use mode requires document.content",
+    "recoverable": true                  // true for status < 500
+  },
+  "trace_id": "e502f469-...",            // fresh UUID even when no run started
+  "log_file": "logs/run_e502f469-....jsonl",
+  "detail": "use mode requires document.content"   // legacy back-compat mirror of error.message
+}
+```
+
+The HTTP status code (`422`, `404`, `5xx`) is preserved on the response so
+existing clients that switch on status keep working.
+
+Full samples in [`output_examples/use_mode/`](output_examples/use_mode/).
 
 ### Supporting endpoints
 
